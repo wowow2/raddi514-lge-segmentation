@@ -1,4 +1,8 @@
 import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import matplotlib
 
@@ -26,8 +30,8 @@ def _ensure_interactive_backend() -> str:
 
 _backend = _ensure_interactive_backend()
 
-from src.emidec.emidec_dataset import EMIDECDataset
-from src.emidec.viewer import DatasetViewer
+from src.datautils.emidec_dataset import EMIDECDataset
+from src.viewer import DatasetViewer
 
 SPLIT_DIRS = {
     "train": ["emidec_dataset/train"],
