@@ -38,11 +38,11 @@ class DatasetViewer:
         self.ax_info = self.fig.add_subplot(gs[1])
         self.ax_info.axis("off")
 
-        # Load initial
+        # Load initial (start at slice 1)
         case = self.cases[self.case_idx]
         img = case.display_image
         _, gt = case.load()
-        self.slice_idx = img.shape[2] // 2
+        self.slice_idx = 0
 
         # Fast Artists
         self.im_artist = self.ax_img.imshow(
@@ -77,10 +77,9 @@ class DatasetViewer:
         return self.cases[self.case_idx]
 
     def _set_case(self, idx: int):
-        """Switch to another case and reset the slice to the middle of the volume."""
+        """Switch to another case and reset to slice 1."""
         self.case_idx = idx % len(self.cases)
-        img, _ = self.current_case.load()
-        self.slice_idx = img.shape[2] // 2
+        self.slice_idx = 0
 
     def _build_hud(self, case: EMIDECCase) -> str:
         """Formatted clinical & technical info panel for a case."""

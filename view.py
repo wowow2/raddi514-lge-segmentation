@@ -26,8 +26,8 @@ def _ensure_interactive_backend() -> str:
 
 _backend = _ensure_interactive_backend()
 
-from src.data.emidec_dataset import EMIDECDataset
-from src.data.viewer import DatasetViewer
+from src.emidec.emidec_dataset import EMIDECDataset
+from src.emidec.viewer import DatasetViewer
 
 SPLIT_DIRS = {
     "train": ["emidec_dataset/train"],
