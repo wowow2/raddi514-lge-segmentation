@@ -1,19 +1,54 @@
-import os
-import glob
-from src.data.emidec_loader import EMIDECCase
-from src.visualizer.viewer import DatasetViewer
+import argparse
+
+import matplotlib
+
+
+def _ensure_interactive_backend() -> str:
+    """Select a GUI backend so plt.show() actually opens a window.
+
+    Without this, environments defaulting to Agg silently show nothing.
+    """
+    for backend in ("QtAgg", "TkAgg"):
+        try:
+            matplotlib.use(backend, force=True)
+            import matplotlib.pyplot as plt
+
+            plt.figure()  # validates the backend plugin loads
+            plt.close("all")
+            return backend
+        except Exception:
+            continue
+    raise RuntimeError(
+        "No interactive matplotlib backend available (tried QtAgg, TkAgg). "
+        "Install one, e.g.: .venv/bin/pip install PyQt5"
+    )
+
+
+_backend = _ensure_interactive_backend()
+
+from src.data.emidec_dataset import EMIDECDataset
+from src.data.viewer import DatasetViewer
+
+SPLIT_DIRS = {
+    "train": ["emidec_dataset/train"],
+    "test": ["emidec_dataset/test"],
+    "all": ["emidec_dataset/train", "emidec_dataset/test"],
+}
+
 
 def main():
-    train_dir = "emidec_dataset/train"
-    case_dirs = sorted([d for d in glob.glob(f"{train_dir}/Case_*") if os.path.isdir(d)])
-    if not case_dirs:
-        print(f"Error: No cases found in {train_dir}")
-        return
-    
-    cases = [EMIDECCase(d) for d in case_dirs]
-    print(f"Loaded {len(cases)} cases. Launching viewer...")
-    viewer = DatasetViewer(cases)
+    parser = argparse.ArgumentParser(description="EMIDEC dataset explorer")
+    parser.add_argument(
+        "--split", choices=["train", "test", "all"], default="all",
+        help="which split to browse (default: all)",
+    )
+    args = parser.parse_args()
+
+    dataset = EMIDECDataset(SPLIT_DIRS[args.split])
+    print(f"Loaded {len(dataset)} cases [{_backend}] ({args.split}). Launching viewer...")
+    viewer = DatasetViewer(dataset.cases)
     viewer.show()
+
 
 if __name__ == "__main__":
     main()
