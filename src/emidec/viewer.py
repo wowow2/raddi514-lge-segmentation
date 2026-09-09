@@ -1,3 +1,5 @@
+import re
+
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
@@ -28,6 +30,8 @@ class DatasetViewer:
         self.case_idx = 0
         self.slice_idx = 0
         self.show_mask = True
+        self._search: str | None = None  # None = not searching; else digit buffer
+        self._flash_msg: str | None = None  # transient title message (e.g. no match)
 
         self.fig = plt.figure(figsize=(12, 7.5))
         self.fig.canvas.manager.set_window_title("EMIDEC Explorer - Imaging & Clinical Metadata")
@@ -81,6 +85,39 @@ class DatasetViewer:
         self.case_idx = idx % len(self.cases)
         self.slice_idx = 0
 
+    @staticmethod
+    def _case_number(case: EMIDECCase) -> str:
+        """Trailing digits of a case id ('Case_P042' -> '042', 'Case_101' -> '101')."""
+        m = re.search(r"(\d+)$", case.case_id)
+        return m.group(1) if m else ""
+
+    def _search_matches(self, buf: str) -> list[int]:
+        """Indices of cases whose number matches the buffer ('42' matches '042')."""
+        if not buf:
+            return list(range(len(self.cases)))
+        b = buf.lstrip("0")
+        if not b:  # buffer is all zeros: match numbers starting with 0
+            return [
+                i for i, c in enumerate(self.cases)
+                if self._case_number(c).startswith("0")
+            ]
+        return [
+            i for i, c in enumerate(self.cases)
+            if self._case_number(c).lstrip("0").startswith(b)
+        ]
+
+    def _jump_to_match(self):
+        """Jump to the first match at/after the current case (wrapping)."""
+        matches = self._search_matches(self._search or "")
+        if not matches:
+            self._flash_msg = f"No match for '{self._search}'"
+            self._search = None
+            return
+        ordered = sorted(matches, key=lambda i: (i - self.case_idx) % len(self.cases))
+        self._flash_msg = None
+        self._search = None
+        self._set_case(ordered[0])
+
     def _build_hud(self, case: EMIDECCase) -> str:
         """Formatted clinical & technical info panel for a case."""
         meta = case.clinical_meta
@@ -124,6 +161,7 @@ class DatasetViewer:
             "  [↓ / N / PgDn]: Next Patient",
             "  [↑ / P / PgUp]: Previous Patient",
             "  [M]           : Toggle Mask Overlay",
+            "  [ / ]         : Go To Case By Number",
             "  [Q / ESC]     : Exit"
         ]
         return "\n".join(info_lines)
@@ -142,10 +180,18 @@ class DatasetViewer:
         else:
             self.mask_artist.set_visible(False)
 
-        self.ax_img.set_title(
-            f"{case.case_id} ({case.group}) — Slice {self.slice_idx + 1}/{num_slices}",
-            fontsize=12, fontweight="bold", pad=10
-        )
+        if self._search is not None:
+            n = len(self._search_matches(self._search))
+            title = f"Go to case: {self._search}▏ ({n} match{'es' if n != 1 else ''})"
+        elif self._flash_msg is not None:
+            title = self._flash_msg
+            self._flash_msg = None  # show once
+        else:
+            title = (
+                f"{case.case_id} ({case.group}) — "
+                f"Slice {self.slice_idx + 1}/{num_slices}"
+            )
+        self.ax_img.set_title(title, fontsize=12, fontweight="bold", pad=10)
 
         # 2. Render Formatted Clinical & Technical HUD
         self.ax_info.clear()
@@ -160,6 +206,22 @@ class DatasetViewer:
         self.fig.canvas.draw_idle()
 
     def on_key(self, event):
+        # Search mode: digits build the buffer, Enter jumps, Esc cancels.
+        if self._search is not None:
+            if event.key == "enter":
+                self._jump_to_match()
+                self.render()
+            elif event.key == "escape":
+                self._search = None
+                self.render()
+            elif event.key == "backspace":
+                self._search = self._search[:-1]
+                self.render()
+            elif event.key in "0123456789":
+                self._search += event.key
+                self.render()
+            return  # nav keys disabled while searching
+
         case = self.current_case
         _, _ = case.load()  # ensure loaded; render reuses the cached arrays
         img = case.display_image
@@ -179,6 +241,9 @@ class DatasetViewer:
             self.render()
         elif event.key in ["m", "M"]:
             self.show_mask = not self.show_mask
+            self.render()
+        elif event.key == "/":
+            self._search = ""
             self.render()
         elif event.key in ["q", "Q", "escape"]:
             plt.close(self.fig)
