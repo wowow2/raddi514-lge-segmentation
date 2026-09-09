@@ -1,0 +1,29 @@
+# Virtual Environments
+.venv/
+env/
+venv/
+*.egg-info/
+
+# Large Medical Datasets & Binaries (Do NOT push to GitHub)
+emidec_dataset/
+*.nii
+*.nii.gz
+*.mhd
+*.raw
+*.tar.gz
+*.zip
+
+# Preprocessed Caches & Outputs
+nnUNet_raw/
+nnUNet_preprocessed/
+nnUNet_results/
+results/
+checkpoints/
+*.png
+*.csv
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
