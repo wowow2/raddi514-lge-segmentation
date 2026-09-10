@@ -12,17 +12,12 @@ BROWSER_KEYS: list[tuple[tuple[str, ...], str, str]] = [
     (("up", "p", "pageup"), "case_prev", "Previous Patient"),
     (("m",), "mask_toggle", "Toggle Mask Overlay"),
     (("1", "2", "3", "4"), "class_toggle", "Toggle Class 1-4"),
-    (("s",), "pathology_next", "Next Scar/MVO Slice"),
-    (("f",), "filter_cycle", "Filter: All/Scar/MVO/Normal"),
-    (("minus", "equal"), "window_width", "Window Width -/+"),
-    (("bracketleft", "bracketright"), "window_level", "Window Level -/+"),
     (("e",), "export_png", "Export PNG"),
 ]
 
-# action ids handled by the viewer root (mode/search/quit)
+# action ids handled by the viewer root (search/quit)
 VIEWER_KEYS: list[tuple[tuple[str, ...], str, str]] = [
     (("/",), "search_start", "Go To Case By Number"),
-    (("a",), "dashboard_toggle", "Analytics Dashboard"),
     (("q", "Q", "escape"), "quit", "Exit"),
 ]
 

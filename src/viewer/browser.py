@@ -1,8 +1,8 @@
 """Case-browsing panel: 3-pane layout (image + filmstrip + HUD).
 
-Owns all browse state (slice, mask, per-class set, window/level, filter) and
-exposes action methods. No key handling, no analytics — the viewer root maps
-keys to these actions and re-renders.
+Owns all browse state (slice, mask, per-class set) and exposes action
+methods. No key handling — the viewer root maps keys to these actions
+and re-renders.
 """
 
 import os
@@ -21,18 +21,7 @@ from src.datautils.emidec_loader import (
 from .keys import help_lines
 from .theme import Theme
 
-FILTERS = ("all", "scar", "mvo", "normal")
 THUMB = 64  # filmstrip thumbnail box (px)
-
-
-def _matches(case: EMIDECCase, mode: str) -> bool:
-    if mode == "all":
-        return True
-    if mode == "scar":
-        return case.has_scar
-    if mode == "mvo":
-        return case.has_mvo
-    return case.group == "Normal"
 
 
 class CaseBrowser:
@@ -52,22 +41,14 @@ class CaseBrowser:
         self.on_change = on_change
         self.flash = flash
 
-        self.filter_mode = "all"
-        self.visible: list[EMIDECCase] = list(cases)
         self.pos = 0
         self.slice_idx = 0
         self.show_mask = True
         self.visible_labels = {LABEL_CAVITY, LABEL_MYOCARDIUM, LABEL_SCAR, LABEL_MVO}
-        self.wl, self.ww = 0.5, 1.0  # window level/width on the 0-1 display image
         self._strip_cache: tuple | None = None  # (case_id, montage, scar_flags)
 
         self._build_artists()
         self._connect_mouse()
-
-    def rebuild(self):
-        """Recreate axes/artists (e.g. returning from dashboard, which clears
-        the figure). Mouse connections persist — connected once in __init__."""
-        self._build_artists()
 
     # ------------------------------------------------------------------ layout
     def _build_artists(self):
@@ -142,7 +123,7 @@ class CaseBrowser:
     # ------------------------------------------------------------------ state
     @property
     def current_case(self) -> EMIDECCase:
-        return self.visible[self.pos]
+        return self.all_cases[self.pos]
 
     def _arrays(self, case: EMIDECCase):
         img = case.display_image
@@ -159,7 +140,7 @@ class CaseBrowser:
         self.slice_idx = (self.slice_idx + delta) % n
 
     def case_step(self, delta: int):
-        self.pos = (self.pos + delta) % len(self.visible)
+        self.pos = (self.pos + delta) % len(self.all_cases)
         self.slice_idx = 0
 
     def mask_toggle(self):
@@ -171,49 +152,10 @@ class CaseBrowser:
         else:
             self.visible_labels.add(label)
 
-    def pathology_next(self):
-        """Jump to the next slice containing scar/MVO (wraps)."""
-        _, gt = self._arrays(self.current_case)
-        if gt is None:
-            self.flash("No ground truth (blind case)")
-            return
-        n = gt.shape[2]
-        hits = [s for s in range(n)
-                if ((gt[:, :, s] == LABEL_SCAR).any()
-                    or (gt[:, :, s] == LABEL_MVO).any())]
-        if not hits:
-            self.flash(f"No scar/MVO slices in {self.current_case.case_id}")
-            return
-        later = [s for s in hits if s > self.slice_idx]
-        self.slice_idx = later[0] if later else hits[0]
-
-    def filter_cycle(self):
-        self.filter_mode = FILTERS[(FILTERS.index(self.filter_mode) + 1)
-                                   % len(FILTERS)]
-        self.visible = [c for c in self.all_cases
-                        if _matches(c, self.filter_mode)]
-        if not self.visible:  # e.g. test split has no normals
-            self.flash(f"No '{self.filter_mode}' cases — filter reset")
-            self.filter_mode = "all"
-            self.visible = list(self.all_cases)
-        self.pos = 0
+    def jump_to_index(self, idx: int):
+        """Position on all_cases[idx]."""
+        self.pos = idx % len(self.all_cases)
         self.slice_idx = 0
-
-    def jump_to_global_index(self, idx: int):
-        """Position on all_cases[idx]; resets any active filter."""
-        if self.filter_mode != "all":
-            self.filter_mode = "all"
-            self.visible = list(self.all_cases)
-        case_id = self.all_cases[idx].case_id
-        self.pos = next(i for i, c in enumerate(self.visible)
-                        if c.case_id == case_id)
-        self.slice_idx = 0
-
-    def window_width(self, delta: int):
-        self.ww = float(np.clip(self.ww * (1.25 ** delta), 0.05, 2.0))
-
-    def window_level(self, delta: int):
-        self.wl = float(np.clip(self.wl + 0.05 * delta, 0.0, 1.0))
 
     def export_png(self, path: str | None = None) -> str:
         if path is None:
@@ -277,10 +219,9 @@ class CaseBrowser:
     def _hud(self, case: EMIDECCase) -> str:
         meta = case.clinical_meta
         vox = case.voxel_counts
-        filt = "" if self.filter_mode == "all" else f" [{self.filter_mode}]"
         lines = [
             f"{case.case_id}  ({case.group})",
-            f"Case {self.pos + 1}/{len(self.visible)}{filt}",
+            f"Case {self.pos + 1}/{len(self.all_cases)}",
             "",
             "PATIENT",
             f"  Age / Sex: {meta.get('Age', 'N/A')} yrs | {meta.get('Sex', 'N/A')}",
@@ -295,7 +236,6 @@ class CaseBrowser:
             "GEOMETRY",
             f"  Matrix: {case.shape[0]} × {case.shape[1]} × {case.shape[2]}",
             f"  Spacing: {case.zooms[0]} × {case.zooms[1]} × {case.zooms[2]} mm",
-            f"  Window: L {self.wl:.2f} W {self.ww:.2f}",
             "",
             "PATHOLOGY",
         ]
@@ -311,17 +251,12 @@ class CaseBrowser:
         return "\n".join(lines)
 
     def render(self, title: str):
-        """Redraw everything. Title string is composed by the viewer root.
-
-        Requires live axes — call rebuild() first if the figure was cleared
-        (e.g. by the dashboard).
-        """
+        """Redraw everything. Title string is composed by the viewer root."""
         t = self.theme
         case = self.current_case
         img, gt = self._arrays(case)
 
         self.im_artist.set_data(img[:, :, self.slice_idx].T)
-        self.im_artist.set_clim(self.wl - self.ww / 2, self.wl + self.ww / 2)
         if self.show_mask and gt is not None and self.visible_labels:
             self.mask_artist.set_data(self._masked(gt[:, :, self.slice_idx].T))
             self.mask_artist.set_visible(True)
