@@ -1,7 +1,12 @@
 from .emidec_dataset import EMIDECDataset
 from .emidec_loader import EMIDECCase, parse_metadata_file
 from .metrics import SegmentationMetrics
-from .nnunet_export import NnunetExporter
+from .nnunet_export import (
+    LABEL_NAMES,
+    REGION_CLASS_ORDER,
+    REGION_LABEL_NAMES,
+    NnunetExporter,
+)
 from .splits import StratifiedFolds
 
 __all__ = [
@@ -11,4 +16,7 @@ __all__ = [
     "StratifiedFolds",
     "SegmentationMetrics",
     "NnunetExporter",
+    "LABEL_NAMES",
+    "REGION_LABEL_NAMES",
+    "REGION_CLASS_ORDER",
 ]

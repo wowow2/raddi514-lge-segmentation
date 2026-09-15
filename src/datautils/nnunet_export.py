@@ -22,6 +22,27 @@ LABEL_NAMES = {
     "scar": 3,
     "mvo": 4,
 }
+REGION_LABEL_NAMES = {
+    "background": 0,
+    "whole_heart": (1, 2, 3, 4),
+    "myocardium": (2, 3, 4),
+    "infarction": (3, 4),
+    "no_reflow": 4,
+}
+REGION_CLASS_ORDER = (1, 2, 3, 4)
+
+
+def _count_regions(labels: dict) -> int:
+    """Mirror nnUNet's region count: non-background entries (scalars or tuples)."""
+    n = 0
+    for k, r in labels.items():
+        if k == "ignore":
+            continue
+        if (np.isscalar(r) and r == 0) or (
+                isinstance(r, (tuple, list)) and len(set(r)) == 1 and set(r) == {0}):
+            continue
+        n += 1
+    return n
 
 
 class NnunetExporter:
@@ -29,13 +50,33 @@ class NnunetExporter:
 
     Usage:
         NnunetExporter(out_dir="nnUNet_raw").export(train_cases, test_cases)
+
+    For region-based training pass ``labels=REGION_LABEL_NAMES`` and
+    ``regions_class_order=REGION_CLASS_ORDER`` (with a distinct task_name
+    such as ``Dataset501_EMIDEC_Regions``, since output paths don't encode
+    the label definition).
     """
 
     def __init__(self, out_dir: str = "nnUNet_raw",
-                 task_name: str = TASK_NAME, overwrite: bool = False):
+                 task_name: str = TASK_NAME, overwrite: bool = False,
+                 labels: dict | None = None,
+                 regions_class_order: tuple | None = None):
         self.out_dir = out_dir
         self.task_name = task_name
         self.overwrite = overwrite
+        self.labels = dict(labels) if labels is not None else dict(LABEL_NAMES)
+        self.regions_class_order = regions_class_order
+        has_regions = any(isinstance(v, (tuple, list)) and len(v) > 1
+                          for v in self.labels.values())
+        if has_regions:
+            if self.regions_class_order is None:
+                raise ValueError(
+                    "Region labels require regions_class_order "
+                    "(nnUNet asserts this at load time)")
+            if len(self.regions_class_order) != _count_regions(self.labels):
+                raise ValueError(
+                    f"regions_class_order has {len(self.regions_class_order)} entries "
+                    f"but {_count_regions(self.labels)} non-background regions defined")
 
     @staticmethod
     def sanitize_id(case_id: str) -> str:
@@ -108,11 +149,14 @@ class NnunetExporter:
         generate_dataset_json(
             task_dir,
             channel_names={0: "LGE"},
-            labels=dict(LABEL_NAMES),
+            labels={k: (list(v) if isinstance(v, tuple) else v)
+                    for k, v in self.labels.items()},
             num_training_cases=len(training),
             file_ending=".nii.gz",
             training=training,
             test=test_ids,
+            **({"regions_class_order": list(self.regions_class_order)}
+               if self.regions_class_order is not None else {}),
         )
         return task_dir
 

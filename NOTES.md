@@ -23,3 +23,16 @@
 ### What is LGE-MRI?
 * **Concept:** Late Gadolinium Enhancement (LGE) is the clinical gold standard for imaging myocardial damage after a heart attack.
 * **Mechanism:** The patient gets an IV injection of a gadolinium contrast agent and waits 10–15 minutes ("Late")
+
+### Literature
+
+### nnUNet baseline
+
+| Class | Dice mean | Dice std | HD95 mean | HD95 std |
+|---|---|---|---|---|
+| Cavity | 0.935 | 0.019 | 6.16 | 18.04 |
+| Myo | 0.836 | 0.048 | 4.57 | 7.18 |
+| Scar | 0.551 | 0.318 | 18.17 | 19.87 |
+| MVO | 0.657 | 0.410 | 19.17 | 11.00 |
+| **All** | **0.744** | **0.301** | **9.68** | — |
+

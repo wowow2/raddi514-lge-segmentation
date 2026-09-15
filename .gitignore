@@ -17,6 +17,8 @@ emidec_dataset/
 nnUNet_raw/
 nnUNet_preprocessed/
 nnUNet_results/
+nnUNet_validation/
+cv_preds.tar.gz
 results/
 checkpoints/
 *.png
@@ -27,3 +29,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .DS_Store
+
+# IDE
+.idea/
