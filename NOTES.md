@@ -24,8 +24,6 @@
 * **Concept:** Late Gadolinium Enhancement (LGE) is the clinical gold standard for imaging myocardial damage after a heart attack.
 * **Mechanism:** The patient gets an IV injection of a gadolinium contrast agent and waits 10–15 minutes ("Late")
 
-### Literature
-
 ### nnUNet baseline
 
 | Class | Dice mean | Dice std | HD95 mean | HD95 std |
