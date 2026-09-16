@@ -30,20 +30,23 @@ RES_LINES="#SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_2g.20gb:1
 #SBATCH --time=04:00:00"
 DEVICE_ARGS=""
 EXTRA_LINES=""
-for arg in "${@:2}"; do
-  case "$arg" in
-    --pack) PACK=1 ;;
-    --local) LOCAL=1 ;;
-    --parts=*) PARTS="${arg#--parts=}" ;;
+set -- "${@:2}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --pack) PACK=1; shift ;;
+    --local) LOCAL=1; shift ;;
+    --parts) PARTS="${2:?--parts needs a value}"; shift 2 ;;
+    --parts=*) PARTS="${1#--parts=}"; shift ;;
     --cpu)
       RES_LINES="#SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --time=08:00:00"
       DEVICE_ARGS="-device cpu"
-      EXTRA_LINES='export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK' ;;
-    --plans=*) PLAN="${arg#--plans=}" ;;
-    --config=*) CONFIG="${arg#--config=}" ;;
-    *) echo "Unknown arg: $arg" >&2; exit 1 ;;
+      EXTRA_LINES='export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK'
+      shift ;;
+    --plans=*) PLAN="${1#--plans=}"; shift ;;
+    --config=*) CONFIG="${1#--config=}"; shift ;;
+    *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
 
