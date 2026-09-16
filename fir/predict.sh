@@ -5,7 +5,8 @@
 #
 #   ./predict.sh 501            # submit short GPU job (defaults: ResEncM, 2d)
 #   ./predict.sh 501 --cpu      # same, but CPU-only job (~1-2h instead of minutes)
-#   ./predict.sh 501 --pack     # after the job finishes: tar preds, print scp line
+#   ./predict.sh 501 --local    # no job: run CPU inference in this shell (login-node style)
+#   ./predict.sh 501 --pack     # after predictions finish: tar preds, print scp line
 #   ./predict.sh 500 --plans=nnUNetPlans --config=2d
 #
 # Uses checkpoint_best.pth (nnUNetv2_predict default) — the correct checkpoint
@@ -16,10 +17,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/env.sh"
 cd "$FIR_BASE"
 
-DATASET="${1:?Usage: predict.sh <dataset-id> [--pack] [--cpu] [--plans=X] [--config=Y]}"
+DATASET="${1:?Usage: predict.sh <dataset-id> [--pack] [--cpu] [--local] [--plans=X] [--config=Y]}"
 PLAN="nnUNetResEncUNetMPlans"
 CONFIG="2d"
 PACK=0
+LOCAL=0
 RES_LINES="#SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_2g.20gb:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
@@ -29,6 +31,7 @@ EXTRA_LINES=""
 for arg in "${@:2}"; do
   case "$arg" in
     --pack) PACK=1 ;;
+    --local) LOCAL=1 ;;
     --cpu)
       RES_LINES="#SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
@@ -43,6 +46,20 @@ done
 
 NAME="$(resolve_ds "$DATASET")"
 PREDROOT="$nnUNet_results/$NAME/preds_${PLAN}_${CONFIG}"
+
+if [[ "$LOCAL" -eq 1 ]]; then
+  # Login-node style: CPU inference in this shell, no Slurm job.
+  export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
+  for f in 0 1 2 3 4; do
+    echo "fold $f..."
+    mkdir -p "$PREDROOT/fold_$f/validation"
+    nnUNetv2_predict -d "$DATASET" -i "$nnUNet_raw/$NAME/imagesTr" \
+      -o "$PREDROOT/fold_$f/validation" -f "$f" -c "$CONFIG" -p "$PLAN" \
+      --device cpu --continue_prediction --disable_progress_bar
+  done
+  echo "done. Pack with: ./predict.sh $DATASET --pack"
+  exit 0
+fi
 
 if [[ "$PACK" -eq 1 ]]; then
   n=$(find "$PREDROOT" -name '*.nii.gz' 2>/dev/null | wc -l)
