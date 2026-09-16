@@ -57,3 +57,14 @@ else
   done
   [[ "$found" -eq 0 ]] && echo "(no trained datasets in nnUNet_results yet)"
 fi
+
+echo
+echo "=== predictions (expect 500 = 100 cases x 5 folds when done) ==="
+found_p=0
+for pdir in "$nnUNet_results"/Dataset*/preds_*/; do
+  [[ -d "$pdir" ]] || continue
+  found_p=1
+  n=$(find "$pdir" -name '*.nii.gz' 2>/dev/null | wc -l)
+  echo "  ${pdir#"$nnUNet_results"/}: $n / 500 files"
+done
+[[ "$found_p" -eq 0 ]] && echo "  (none yet)"
