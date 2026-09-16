@@ -4,7 +4,8 @@
 #   preds_<plans>_<config>/fold_<F>/validation/<nnunet_id>.nii.gz
 #
 #   ./predict.sh 501            # submit short GPU job (defaults: ResEncM, 2d)
-#   ./predict.sh 501 --cpu      # same, but CPU-only job (~1-2h instead of minutes)
+#   ./predict.sh 501 --cpu      # same, but CPU-only job
+#   ./predict.sh 501 --cpu --parts 8  # CPU job, 8 parallel procs/fold, cores scaled up
 #   ./predict.sh 501 --local    # no job: run CPU inference in this shell (login-node style)
 #   ./predict.sh 501 --local --parts 4  # same, 4 parallel procs per fold (keep parts*threads <= cores)
 #   ./predict.sh 501 --pack     # after predictions finish: tar preds, print scp line
@@ -24,6 +25,7 @@ CONFIG="2d"
 PACK=0
 LOCAL=0
 PARTS=1
+CPU=0
 RES_LINES="#SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_2g.20gb:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
@@ -37,18 +39,23 @@ while [[ $# -gt 0 ]]; do
     --local) LOCAL=1; shift ;;
     --parts) PARTS="${2:?--parts needs a value}"; shift 2 ;;
     --parts=*) PARTS="${1#--parts=}"; shift ;;
-    --cpu)
-      RES_LINES="#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
-#SBATCH --time=08:00:00"
-      DEVICE_ARGS="-device cpu"
-      EXTRA_LINES='export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK'
-      shift ;;
+    --cpu) CPU=1; shift ;;
     --plans=*) PLAN="${1#--plans=}"; shift ;;
     --config=*) CONFIG="${1#--config=}"; shift ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
+
+if [[ "$CPU" -eq 1 ]]; then
+  # 4 threads per part; floor keeps --parts 1 at the old 8 CPU / 32G shape.
+  CPUS=$((PARTS * 4)); [[ "$CPUS" -lt 8 ]] && CPUS=8
+  MEM=$((PARTS * 8)); [[ "$MEM" -lt 32 ]] && MEM=32
+  RES_LINES="#SBATCH --cpus-per-task=${CPUS}
+#SBATCH --mem=${MEM}G
+#SBATCH --time=08:00:00"
+  DEVICE_ARGS="-device cpu"
+  EXTRA_LINES='export OMP_NUM_THREADS=4'
+fi
 
 NAME="$(resolve_ds "$DATASET")"
 PREDROOT="$nnUNet_results/$NAME/preds_${PLAN}_${CONFIG}"
@@ -97,9 +104,13 @@ ${EXTRA_LINES}
 # ${NAME} | ${PLAN} | ${CONFIG} | checkpoint_best (explicit)
 for f in 0 1 2 3 4; do
   mkdir -p "${PREDROOT}/fold_\$f/validation"
-  nnUNetv2_predict -d ${DATASET} -i "\$nnUNet_raw/${NAME}/imagesTr" \\
-    -o "${PREDROOT}/fold_\$f/validation" -f \$f -c ${CONFIG} -p ${PLAN} \\
-    -chk checkpoint_best.pth ${DEVICE_ARGS} --continue_prediction --disable_progress_bar
+  for p in \$(seq 0 $((PARTS - 1))); do
+    nnUNetv2_predict -d ${DATASET} -i "\$nnUNet_raw/${NAME}/imagesTr" \\
+      -o "${PREDROOT}/fold_\$f/validation" -f \$f -c ${CONFIG} -p ${PLAN} \\
+      -chk checkpoint_best.pth ${DEVICE_ARGS} --continue_prediction --disable_progress_bar \\
+      -num_parts ${PARTS} -part_id \$p &
+  done
+  wait
 done
 EOF
 
