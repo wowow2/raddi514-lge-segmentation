@@ -9,8 +9,8 @@
 #   ./predict.sh 501 --pack     # after predictions finish: tar preds, print scp line
 #   ./predict.sh 500 --plans=nnUNetPlans --config=2d
 #
-# Uses checkpoint_best.pth (nnUNetv2_predict default) — the correct checkpoint
-# when a run stopped at the time wall without checkpoint_final.pth.
+# Uses -chk checkpoint_best.pth explicitly (predict defaults to final,
+# which wall-stopped runs lack) — best is the correct checkpoint anyway.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -55,7 +55,7 @@ if [[ "$LOCAL" -eq 1 ]]; then
     mkdir -p "$PREDROOT/fold_$f/validation"
     nnUNetv2_predict -d "$DATASET" -i "$nnUNet_raw/$NAME/imagesTr" \
       -o "$PREDROOT/fold_$f/validation" -f "$f" -c "$CONFIG" -p "$PLAN" \
-      -device cpu --continue_prediction --disable_progress_bar
+      -chk checkpoint_best.pth -device cpu --continue_prediction --disable_progress_bar
   done
   echo "done. Pack with: ./predict.sh $DATASET --pack"
   exit 0
@@ -66,7 +66,7 @@ if [[ "$PACK" -eq 1 ]]; then
   echo "prediction files: $n (expect 500 = 100 cases x 5 folds)"
   tar czf "$FIR_BASE/${NAME}_preds.tar.gz" -C "$PREDROOT" .
   ls -lh "$FIR_BASE/${NAME}_preds.tar.gz"
-  echo "download with: scp aarizvi2@fir:${FIR_BASE}/${NAME}_preds.tar.gz ."
+  echo "download with: scp fir:${FIR_BASE}/${NAME}_preds.tar.gz ."
   exit 0
 fi
 
@@ -83,12 +83,12 @@ cd "\$FIR_BASE"
 mkdir -p logs
 ${EXTRA_LINES}
 
-# ${NAME} | ${PLAN} | ${CONFIG} | checkpoint_best (default)
+# ${NAME} | ${PLAN} | ${CONFIG} | checkpoint_best (explicit)
 for f in 0 1 2 3 4; do
   mkdir -p "${PREDROOT}/fold_\$f/validation"
   nnUNetv2_predict -d ${DATASET} -i "\$nnUNet_raw/${NAME}/imagesTr" \\
     -o "${PREDROOT}/fold_\$f/validation" -f \$f -c ${CONFIG} -p ${PLAN} \\
-    ${DEVICE_ARGS} --continue_prediction --disable_progress_bar
+    -chk checkpoint_best.pth ${DEVICE_ARGS} --continue_prediction --disable_progress_bar
 done
 EOF
 
