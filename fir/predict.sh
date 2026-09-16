@@ -36,7 +36,7 @@ for arg in "${@:2}"; do
       RES_LINES="#SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --time=08:00:00"
-      DEVICE_ARGS="--device cpu"
+      DEVICE_ARGS="-device cpu"
       EXTRA_LINES='export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK' ;;
     --plans=*) PLAN="${arg#--plans=}" ;;
     --config=*) CONFIG="${arg#--config=}" ;;
@@ -55,7 +55,7 @@ if [[ "$LOCAL" -eq 1 ]]; then
     mkdir -p "$PREDROOT/fold_$f/validation"
     nnUNetv2_predict -d "$DATASET" -i "$nnUNet_raw/$NAME/imagesTr" \
       -o "$PREDROOT/fold_$f/validation" -f "$f" -c "$CONFIG" -p "$PLAN" \
-      --device cpu --continue_prediction --disable_progress_bar
+      -device cpu --continue_prediction --disable_progress_bar
   done
   echo "done. Pack with: ./predict.sh $DATASET --pack"
   exit 0
