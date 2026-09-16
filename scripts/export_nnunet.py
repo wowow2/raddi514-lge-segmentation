@@ -25,6 +25,8 @@ def main():
     parser.add_argument("--regions", action="store_true",
                         help="use BraTS-style overlapping region labels "
                              "(requires a distinct --task-name, e.g. Dataset501_*)")
+    parser.add_argument("--neighbor-stack", action="store_true",
+                        help="write 2.5D input channels (z-1/z/z+1, edge-replicated)")
     args = parser.parse_args()
 
     labels = dict(REGION_LABEL_NAMES) if args.regions else dict(LABEL_NAMES)
@@ -35,6 +37,7 @@ def main():
     task_dir = NnunetExporter(
         out_dir=args.out, task_name=args.task_name, overwrite=args.overwrite,
         labels=labels, regions_class_order=order,
+        neighbor_stack=args.neighbor_stack,
     ).export(train.cases, test.cases)
     print(f"Exported {len(train)} train + {len(test)} test cases -> {task_dir}")
 

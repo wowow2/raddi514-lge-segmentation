@@ -45,6 +45,25 @@ def _count_regions(labels: dict) -> int:
     return n
 
 
+class NeighborStacker:
+    """Build 2.5D input channels [z-1, z, z+1] from a volume.
+
+    Edge slices replicate (slice 0 stands in for z=-1, last slice for z=+1),
+    so every position carries full context and nnU-Net needs no boundary
+    special-casing. Pure array logic — no nnU-Net dependency.
+    """
+
+    CHANNEL_NAMES = {0: "LGE_below", 1: "LGE", 2: "LGE_above"}
+
+    def build_channels(self, volume: np.ndarray) -> list[np.ndarray]:
+        """Return [below, center, above] volumes with clamped indices."""
+        z = volume.shape[2]
+        s = np.arange(z)
+        return [volume[:, :, np.clip(s - 1, 0, z - 1)],
+                volume[:, :, s],
+                volume[:, :, np.clip(s + 1, 0, z - 1)]]
+
+
 class NnunetExporter:
     """Convert EMIDEC cases to nnUNet raw layout.
 
@@ -55,17 +74,24 @@ class NnunetExporter:
     ``regions_class_order=REGION_CLASS_ORDER`` (with a distinct task_name
     such as ``Dataset501_EMIDEC_Regions``, since output paths don't encode
     the label definition).
+
+    For 2.5D context pass ``neighbor_stack=True`` (e.g. with region labels
+    for a ``Dataset502_*`` task): each case is written as three channel
+    files ``_0000/_0001/_0002`` (slice z-1/z/z+1, edge-replicated).
     """
 
     def __init__(self,                  out_dir: str = "var/nnUNet_raw",
                  task_name: str = TASK_NAME, overwrite: bool = False,
                  labels: dict | None = None,
-                 regions_class_order: tuple | None = None):
+                 regions_class_order: tuple | None = None,
+                 neighbor_stack: bool = False):
         self.out_dir = out_dir
         self.task_name = task_name
         self.overwrite = overwrite
         self.labels = dict(labels) if labels is not None else dict(LABEL_NAMES)
         self.regions_class_order = regions_class_order
+        self.neighbor_stack = neighbor_stack
+        self.stacker = NeighborStacker() if neighbor_stack else None
         has_regions = any(isinstance(v, (tuple, list)) and len(v) > 1
                           for v in self.labels.values())
         if has_regions:
@@ -99,11 +125,29 @@ class NnunetExporter:
         return affine
 
     @classmethod
+    def _load_image(cls, src_path: str) -> tuple[np.ndarray, np.ndarray]:
+        """Unscaled float32 data + spacing-aware affine from a source NIfTI."""
+        nii = nib.load(src_path)
+        return nii.get_fdata(dtype=np.float32), cls._spaced_affine(nii)
+
+    @classmethod
+    def _write_image(cls, data: np.ndarray, affine: np.ndarray,
+                     dst_path: str) -> None:
+        nib.save(nib.Nifti1Image(data, affine), dst_path)
+
+    @classmethod
     def _save_image(cls, src_path: str, dst_path: str) -> None:
         """Copy an image NIfTI: unscaled float32 data + spacing-aware affine."""
-        nii = nib.load(src_path)
-        data = nii.get_fdata(dtype=np.float32)
-        nib.save(nib.Nifti1Image(data, cls._spaced_affine(nii)), dst_path)
+        data, affine = cls._load_image(src_path)
+        cls._write_image(data, affine, dst_path)
+
+    def _save_case_images(self, src_path: str, dst_dir: str, nid: str) -> None:
+        """Write _0000 (single channel) or _0000/_0001/_0002 (neighbor stack)."""
+        data, affine = self._load_image(src_path)
+        channels = (self.stacker.build_channels(data) if self.stacker is not None
+                    else [data])
+        for i, ch in enumerate(channels):
+            self._write_image(ch, affine, os.path.join(dst_dir, f"{nid}_{i:04d}.nii.gz"))
 
     @classmethod
     def _save_label(cls, src_path: str, dst_path: str) -> None:
@@ -132,8 +176,7 @@ class NnunetExporter:
             if not case.has_gt:
                 raise ValueError(f"Train case {case.case_id} has no ground truth")
             nid = self.sanitize_id(case.case_id)
-            self._save_image(case.img_path,
-                             os.path.join(images_tr, f"{nid}_0000.nii.gz"))
+            self._save_case_images(case.img_path, images_tr, nid)
             self._save_label(case.gt_path,
                              os.path.join(labels_tr, f"{nid}.nii.gz"))
             training.append({"image": f"./imagesTr/{nid}_0000.nii.gz",
@@ -142,13 +185,14 @@ class NnunetExporter:
         test_ids = []
         for case in test_cases:
             nid = self.sanitize_id(case.case_id)
-            self._save_image(case.img_path,
-                             os.path.join(images_ts, f"{nid}_0000.nii.gz"))
+            self._save_case_images(case.img_path, images_ts, nid)
             test_ids.append(f"./imagesTs/{nid}_0000.nii.gz")
 
+        channel_names = (dict(NeighborStacker.CHANNEL_NAMES)
+                         if self.stacker is not None else {0: "LGE"})
         generate_dataset_json(
             task_dir,
-            channel_names={0: "LGE"},
+            channel_names=channel_names,
             labels={k: (list(v) if isinstance(v, tuple) else v)
                     for k, v in self.labels.items()},
             num_training_cases=len(training),
@@ -162,4 +206,5 @@ class NnunetExporter:
 
     def __repr__(self) -> str:
         return (f"NnunetExporter(out_dir={self.out_dir!r}, "
-                f"task_name={self.task_name!r})")
+                f"task_name={self.task_name!r}, "
+                f"neighbor_stack={self.stacker is not None})")

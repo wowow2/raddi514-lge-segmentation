@@ -6,6 +6,7 @@ from .nnunet_export import (
     LABEL_NAMES,
     REGION_CLASS_ORDER,
     REGION_LABEL_NAMES,
+    NeighborStacker,
     NnunetExporter,
 )
 from .splits import StratifiedFolds
@@ -16,6 +17,7 @@ __all__ = [
     "parse_metadata_file",
     "StratifiedFolds",
     "SegmentationMetrics",
+    "NeighborStacker",
     "PostProcessor",
     "SCAR_LABEL",
     "MIN_SCAR_VOXELS",
