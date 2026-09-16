@@ -3,7 +3,10 @@
 #   source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 set -u
 
-export FIR_BASE=/project/def-punithak/aarizvi2/raddi514
+# Default: scratch (project filesystem is inode-exhausted; see NOTES).
+# Overridable: export FIR_BASE=/project/def-punithak/aarizvi2/raddi514
+# before sourcing to run from /project if inodes recover.
+export FIR_BASE="${FIR_BASE:-/scratch/aarizvi2/raddi514}"
 export FIR_VENV=/scratch/aarizvi2/env_raddi514/bin/activate
 
 export nnUNet_raw=$FIR_BASE/emidec_nnunet/nnUNet_raw
@@ -15,6 +18,11 @@ module load StdEnv/2023 python/3.11 cuda 2>/dev/null \
   || module load StdEnv/2023 python/3.11
 # shellcheck disable=SC1091
 source "$FIR_VENV"
+
+# Show which layout is live on interactive shells only (not in job logs).
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then
+  echo "fir env: FIR_BASE=$FIR_BASE" >&2
+fi
 
 # resolve_ds <numeric-id> — print the raw dataset dir name (e.g.
 # Dataset501_EMIDEC_Regions) for a numeric nnU-Net ID, or fail if the
