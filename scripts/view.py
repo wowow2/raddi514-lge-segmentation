@@ -34,9 +34,9 @@ from src.datautils.emidec_dataset import EMIDECDataset
 from src.viewer import DatasetViewer
 
 SPLIT_DIRS = {
-    "train": ["emidec_dataset/train"],
-    "test": ["emidec_dataset/test"],
-    "all": ["emidec_dataset/train", "emidec_dataset/test"],
+    "train": ["var/emidec_dataset/train"],
+    "test": ["var/emidec_dataset/test"],
+    "all": ["var/emidec_dataset/train", "var/emidec_dataset/test"],
 }
 
 

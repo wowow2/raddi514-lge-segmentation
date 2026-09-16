@@ -49,7 +49,7 @@ class NnunetExporter:
     """Convert EMIDEC cases to nnUNet raw layout.
 
     Usage:
-        NnunetExporter(out_dir="nnUNet_raw").export(train_cases, test_cases)
+        NnunetExporter(out_dir="var/nnUNet_raw").export(train_cases, test_cases)
 
     For region-based training pass ``labels=REGION_LABEL_NAMES`` and
     ``regions_class_order=REGION_CLASS_ORDER`` (with a distinct task_name
@@ -57,7 +57,7 @@ class NnunetExporter:
     the label definition).
     """
 
-    def __init__(self, out_dir: str = "nnUNet_raw",
+    def __init__(self,                  out_dir: str = "var/nnUNet_raw",
                  task_name: str = TASK_NAME, overwrite: bool = False,
                  labels: dict | None = None,
                  regions_class_order: tuple | None = None):

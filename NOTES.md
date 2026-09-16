@@ -31,6 +31,41 @@
 | Cavity | 0.935 | 0.019 | 6.16 | 18.04 |
 | Myo | 0.836 | 0.048 | 4.57 | 7.18 |
 | Scar | 0.551 | 0.318 | 18.17 | 19.87 |
+| Scar (gated) | 0.656 | 0.288 | 18.03 | 20.29 |
 | MVO | 0.657 | 0.410 | 19.17 | 11.00 |
-| **All** | **0.744** | **0.301** | **9.68** | — |
+| **All (gated)** | **0.771** | **0.279** | **9.56** | — |
+
+### nnUNet ResEnc-M, flat labels
+
+| Class | Dice mean | Dice std | HD95 mean | HD95 std |
+|---|---|---|---|---|
+| Cavity | 0.932 | 0.024 | 9.43 | 29.66 |
+| Myo | 0.835 | 0.048 | 6.72 | 22.76 |
+| Scar | 0.470 | 0.318 | 20.16 | 28.51 |
+| Scar (gated) | 0.668 | 0.275 | 18.34 | 24.82 |
+| MVO | 0.668 | 0.398 | 16.92 | 9.41 |
+| **All (gated)** | **0.776** | **0.268** | **11.29** | — |
+
+### nnUNet ResEnc-M, region labels (Dataset501: whole_heart > myocardium > infarction > no_reflow)
+
+| Class | Dice mean | Dice std | HD95 mean | HD95 std |
+|---|---|---|---|---|
+| Cavity | 0.932 | 0.023 | 9.97 | 27.32 |
+| Myo | 0.833 | 0.052 | 7.05 | 21.24 |
+| Scar | 0.491 | 0.321 | 19.05 | 23.31 |
+| Scar (gated) | 0.677 | 0.273 | 17.22 | 18.53 |
+| MVO | 0.688 | 0.392 | 17.66 | 9.38 |
+| **All (gated)** | **0.782** | **0.263** | **11.34** | — |
+
+### Post-processing: scar gate
+
+* **Rule:** zero the scar label when fewer than 50 scar voxels are predicted (`PostProcessor`, `scripts/apply_postprocess.py`). Threshold picked by validation sweep (25–100 flat, peak at 50) and frozen; needs only predictions, so the same code runs on blind test data.
+* **Why:** under the challenge convention (both-empty → 1.0) one speck on a scar-free case scores 0.0. Stratified analysis showed pathological scar tied ~0.54 across all runs — the raw gaps came from normal-case specks, not backbone quality. Containment filtering tested +0.000 (specks sit inside predicted cardiac territory); dropped.
+* **Effect (scar Dice, MVO untouched):**
+
+| Run | Scar raw | Scar gated | MVO |
+|---|---|---|---|
+| Plain (500) | 0.551 | 0.656 | 0.657 |
+| ResEnc-M flat (500) | 0.470 | 0.668 | 0.668 |
+| ResEnc-M regions (501) | 0.491 | 0.677 | 0.688 |
 

@@ -23,8 +23,8 @@ from src.datautils.evaluator import DatasetEvaluator
 
 def main():
     parser = argparse.ArgumentParser(description="Score nnUNet CV Predictions")
-    parser.add_argument("--pred-dir", default=DEFAULT_PRED_DIR, help="Path to nnUNet_validation")
-    parser.add_argument("--gt-root", default=DEFAULT_GT_ROOT, help="Path to emidec_dataset/train")
+    parser.add_argument("--pred-dir", default=DEFAULT_PRED_DIR, help="Path to var/nnUNet_validation")
+    parser.add_argument("--gt-root", default=DEFAULT_GT_ROOT, help="Path to var/emidec_dataset/train")
     parser.add_argument("--splits", default=DEFAULT_SPLITS_PATH, help="Path to splits_final.json")
     parser.add_argument("--out", default=DEFAULT_OUT_PATH, help="Path to output results JSON")
     args = parser.parse_args()

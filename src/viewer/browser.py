@@ -159,8 +159,8 @@ class CaseBrowser:
 
     def export_png(self, path: str | None = None) -> str:
         if path is None:
-            os.makedirs("results", exist_ok=True)
-            path = (f"results/viewer_{self.current_case.case_id}"
+            os.makedirs("var/results", exist_ok=True)
+            path = (f"var/results/viewer_{self.current_case.case_id}"
                     f"_s{self.slice_idx + 1}.png")
         self.fig.savefig(path, facecolor=self.theme.figure_face, dpi=150)
         self.flash(f"Saved {path}")

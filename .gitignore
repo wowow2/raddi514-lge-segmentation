@@ -5,7 +5,7 @@ venv/
 *.egg-info/
 
 # Large Medical Datasets & Binaries (Do NOT push to GitHub)
-emidec_dataset/
+var/
 *.nii
 *.nii.gz
 *.mhd
@@ -14,12 +14,6 @@ emidec_dataset/
 *.zip
 
 # Preprocessed Caches & Outputs
-nnUNet_raw/
-nnUNet_preprocessed/
-nnUNet_results/
-nnUNet_validation/
-cv_preds.tar.gz
-results/
 checkpoints/
 *.png
 *.csv

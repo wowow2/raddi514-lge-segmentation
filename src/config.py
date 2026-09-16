@@ -28,12 +28,12 @@ LABEL_NAMES: dict[int, str] = {
     LABEL_MVO: "MVO",
 }
 
-DEFAULT_GT_ROOT: str = os.getenv("EMIDEC_GT_ROOT", "emidec_dataset/train")
-DEFAULT_PRED_DIR: str = os.getenv("NNUNET_PRED_DIR", "nnUNet_validation")
+DEFAULT_GT_ROOT: str = os.getenv("EMIDEC_GT_ROOT", "var/emidec_dataset/train")
+DEFAULT_PRED_DIR: str = os.getenv("NNUNET_PRED_DIR", "var/nnUNet_validation")
 DEFAULT_SPLITS_PATH: str = os.getenv(
     "NNUNET_SPLITS_PATH", os.path.join(DEFAULT_PRED_DIR, "splits_final.json")
 )
-DEFAULT_OUT_PATH: str = os.getenv("NNUNET_CV_OUT", "results/nnunet_2d_cv_metrics.json")
+DEFAULT_OUT_PATH: str = os.getenv("NNUNET_CV_OUT", "var/results/nnunet_2d_cv_metrics.json")
 
 
 def nnunet_id_to_case_id(nnunet_id: str) -> str:
