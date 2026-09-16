@@ -12,7 +12,7 @@ from .theme import DARK
 
 
 class DatasetViewer:
-    def __init__(self, cases):
+    def __init__(self, cases, run_names=None, pred_index=None):
         self.cases = list(cases)
         if not self.cases:
             raise ValueError("DatasetViewer needs at least one case")
@@ -27,7 +27,8 @@ class DatasetViewer:
 
         self.browser = CaseBrowser(
             self.fig, self.cases, self.theme,
-            on_change=self.render, flash=self.flash)
+            on_change=self.render, flash=self.flash,
+            run_names=run_names, pred_index=pred_index)
 
         self.fig.canvas.mpl_connect("key_press_event", self.on_key)
         self.render()
@@ -76,9 +77,12 @@ class DatasetViewer:
             return msg
         case = self.browser.current_case
         n_slices = case.load()[0].shape[2]
-        return (f"{case.case_id} ({case.group}) — "
-                f"Slice {self.browser.slice_idx + 1}/{n_slices} — "
-                f"Case {self.browser.pos + 1}/{len(self.browser.all_cases)}")
+        title = (f"{case.case_id} ({case.group}) — "
+                 f"Slice {self.browser.slice_idx + 1}/{n_slices} — "
+                 f"Case {self.browser.pos + 1}/{len(self.browser.all_cases)}")
+        if self.browser.overlay != "GT":
+            title += f" — [{self.browser.overlay}]"
+        return title
 
     def render(self):
         self.browser.render(self._title())
@@ -112,6 +116,8 @@ class DatasetViewer:
             b.case_step(-1)
         elif action == "mask_toggle":
             b.mask_toggle()
+        elif action == "pred_cycle":
+            b.pred_cycle()
         elif action == "class_toggle":
             b.class_toggle(int(key))
         elif action == "export_png":

@@ -11,6 +11,7 @@ BROWSER_KEYS: list[tuple[tuple[str, ...], str, str]] = [
     (("down", "n", "pagedown"), "case_next", "Next Patient"),
     (("up", "p", "pageup"), "case_prev", "Previous Patient"),
     (("m",), "mask_toggle", "Toggle Mask Overlay"),
+    (("v",), "pred_cycle", "Cycle Prediction Overlay"),
     (("1", "2", "3", "4"), "class_toggle", "Toggle Class 1-4"),
     (("e",), "export_png", "Export PNG"),
 ]

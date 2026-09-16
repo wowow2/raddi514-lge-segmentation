@@ -8,6 +8,7 @@ and re-renders.
 import os
 
 import matplotlib.pyplot as plt
+import nibabel as nib
 import numpy as np
 from matplotlib.patches import Patch, Rectangle
 
@@ -25,13 +26,17 @@ THUMB = 64  # filmstrip thumbnail box (px)
 
 
 class CaseBrowser:
-    def __init__(self, fig, cases: list, theme: Theme, on_change, flash):
+    def __init__(self, fig, cases: list, theme: Theme, on_change, flash,
+                 run_names: list | None = None,
+                 pred_index: dict | None = None):
         """Args:
             fig: parent figure (cleared and laid out by this panel).
             cases: full EMIDECCase list.
             theme: Theme dataclass.
             on_change: callback invoked after any state change (viewer re-renders).
             flash: callback for transient title messages.
+            run_names: prediction run names in cycle order, e.g. ["plain", ...].
+            pred_index: {case_id: {run_name: pred .nii.gz path or None}}.
         """
         self.fig = fig
         self.theme = theme
@@ -40,12 +45,16 @@ class CaseBrowser:
             raise ValueError("CaseBrowser needs at least one case")
         self.on_change = on_change
         self.flash = flash
+        self.run_names = list(run_names or [])
+        self.pred_index = pred_index or {}
 
         self.pos = 0
         self.slice_idx = 0
         self.show_mask = True
+        self.overlay = "GT"
         self.visible_labels = {LABEL_CAVITY, LABEL_MYOCARDIUM, LABEL_SCAR, LABEL_MVO}
         self._strip_cache: tuple | None = None  # (case_id, montage, scar_flags)
+        self._pred_cache: dict = {}  # (case_id, run) -> array | None
 
         self._build_artists()
         self._connect_mouse()
@@ -133,6 +142,30 @@ class CaseBrowser:
     def _masked(self, gt_slice: np.ndarray) -> np.ndarray:
         vis = sorted(self.visible_labels)
         return np.where(np.isin(gt_slice, vis), gt_slice, 0)
+
+    def _pred_array(self, case: EMIDECCase, run: str) -> np.ndarray | None:
+        """Lazy-load (and cache) one run's prediction for a case."""
+        key = (case.case_id, run)
+        if key not in self._pred_cache:
+            path = self.pred_index.get(case.case_id, {}).get(run)
+            self._pred_cache[key] = (
+                nib.load(path).get_fdata().astype(np.uint8)
+                if path is not None else None
+            )
+        return self._pred_cache[key]
+
+    def _overlay_array(self, case: EMIDECCase, gt: np.ndarray | None):
+        """Label array currently shown by the mask: GT or one pred run."""
+        if self.overlay == "GT" or not self.run_names:
+            return gt
+        return self._pred_array(case, self.overlay)
+
+    def pred_cycle(self):
+        opts = ["GT"] + self.run_names
+        self.overlay = opts[(opts.index(self.overlay) + 1) % len(opts)]
+        if (self.overlay != "GT"
+                and self._pred_array(self.current_case, self.overlay) is None):
+            self.flash(f"No {self.overlay} prediction for {self.current_case.case_id}")
 
     # ----------------------------------------------------------------- actions
     def slice_step(self, delta: int):
@@ -247,6 +280,9 @@ class CaseBrowser:
                 f"  MVO: {'YES' if case.has_mvo else 'NO'} ({vox[LABEL_MVO]:,d})",
                 f"  Cavity: {vox[LABEL_CAVITY]:,d} | Myo: {vox[LABEL_MYOCARDIUM]:,d}",
             ]
+        if self.run_names:
+            lines += ["", "PREDICTIONS",
+                      f"  Overlay: {self.overlay} (v to cycle)"]
         lines += ["", "─" * 32, "CONTROLS"] + help_lines()
         return "\n".join(lines)
 
@@ -257,8 +293,9 @@ class CaseBrowser:
         img, gt = self._arrays(case)
 
         self.im_artist.set_data(img[:, :, self.slice_idx].T)
-        if self.show_mask and gt is not None and self.visible_labels:
-            self.mask_artist.set_data(self._masked(gt[:, :, self.slice_idx].T))
+        src = self._overlay_array(case, gt)
+        if self.show_mask and src is not None and self.visible_labels:
+            self.mask_artist.set_data(self._masked(src[:, :, self.slice_idx].T))
             self.mask_artist.set_visible(True)
         else:
             self.mask_artist.set_visible(False)
