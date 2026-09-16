@@ -6,6 +6,7 @@
 #   ./predict.sh 501            # submit short GPU job (defaults: ResEncM, 2d)
 #   ./predict.sh 501 --cpu      # same, but CPU-only job (~1-2h instead of minutes)
 #   ./predict.sh 501 --local    # no job: run CPU inference in this shell (login-node style)
+#   ./predict.sh 501 --local --parts 4  # same, 4 parallel procs per fold (keep parts*threads <= cores)
 #   ./predict.sh 501 --pack     # after predictions finish: tar preds, print scp line
 #   ./predict.sh 500 --plans=nnUNetPlans --config=2d
 #
@@ -17,11 +18,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/env.sh"
 cd "$FIR_BASE"
 
-DATASET="${1:?Usage: predict.sh <dataset-id> [--pack] [--cpu] [--local] [--plans=X] [--config=Y]}"
+DATASET="${1:?Usage: predict.sh <dataset-id> [--pack] [--cpu] [--local] [--parts=N] [--plans=X] [--config=Y]}"
 PLAN="nnUNetResEncUNetMPlans"
 CONFIG="2d"
 PACK=0
 LOCAL=0
+PARTS=1
 RES_LINES="#SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_2g.20gb:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
@@ -32,6 +34,7 @@ for arg in "${@:2}"; do
   case "$arg" in
     --pack) PACK=1 ;;
     --local) LOCAL=1 ;;
+    --parts=*) PARTS="${arg#--parts=}" ;;
     --cpu)
       RES_LINES="#SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
@@ -49,13 +52,18 @@ PREDROOT="$nnUNet_results/$NAME/preds_${PLAN}_${CONFIG}"
 
 if [[ "$LOCAL" -eq 1 ]]; then
   # Login-node style: CPU inference in this shell, no Slurm job.
+  # --parts N splits each fold across N parallel processes; keep PARTS*THREADS <= cores.
   export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
   for f in 0 1 2 3 4; do
-    echo "fold $f..."
+    echo "fold $f ($PARTS part(s))..."
     mkdir -p "$PREDROOT/fold_$f/validation"
-    nnUNetv2_predict -d "$DATASET" -i "$nnUNet_raw/$NAME/imagesTr" \
-      -o "$PREDROOT/fold_$f/validation" -f "$f" -c "$CONFIG" -p "$PLAN" \
-      -chk checkpoint_best.pth -device cpu --continue_prediction --disable_progress_bar
+    for p in $(seq 0 $((PARTS - 1))); do
+      nnUNetv2_predict -d "$DATASET" -i "$nnUNet_raw/$NAME/imagesTr" \
+        -o "$PREDROOT/fold_$f/validation" -f "$f" -c "$CONFIG" -p "$PLAN" \
+        -chk checkpoint_best.pth -device cpu --continue_prediction --disable_progress_bar \
+        -num_parts "$PARTS" -part_id "$p" &
+    done
+    wait
   done
   echo "done. Pack with: ./predict.sh $DATASET --pack"
   exit 0
