@@ -35,6 +35,8 @@
 | MVO | 0.657 | 0.410 | 19.17 | 11.00 |
 | **All (gated)** | **0.771** | **0.279** | **9.56** | — |
 
+![plain per-case Dice](var/results/dice_plain.png)
+
 ### nnUNet ResEnc-M, flat labels
 
 | Class | Dice mean | Dice std | HD95 mean | HD95 std |
@@ -45,6 +47,8 @@
 | Scar (gated) | 0.668 | 0.275 | 18.34 | 24.82 |
 | MVO | 0.668 | 0.398 | 16.92 | 9.41 |
 | **All (gated)** | **0.776** | **0.268** | **11.29** | — |
+
+![resenc per-case Dice](var/results/dice_resenc.png)
 
 ### nnUNet ResEnc-M, region labels (Dataset501: whole_heart > myocardium > infarction > no_reflow)
 
@@ -57,6 +61,21 @@
 | MVO | 0.688 | 0.392 | 17.66 | 9.38 |
 | **All (gated)** | **0.782** | **0.263** | **11.34** | — |
 
+![regions per-case Dice](var/results/dice_regions.png)
+
+### nnUNet ResEnc-M, region labels + 2.5D input (Dataset502: neighbor stack z-1/z/z+1)
+
+| Class | Dice mean | Dice std | HD95 mean | HD95 std |
+|---|---|---|---|---|
+| Cavity | 0.935 | 0.021 | 6.57 | 19.59 |
+| Myo | 0.833 | 0.051 | 5.85 | 16.81 |
+| Scar | 0.536 | 0.311 | 16.69 | 22.69 |
+| Scar (gated) | 0.683 | 0.259 | 16.35 | 22.93 |
+| MVO | 0.642 | 0.430 | 20.75 | 10.04 |
+| **All (gated)** | **0.773** | **0.279** | **9.74** | — |
+
+![2.5d per-case Dice](var/results/dice_2.5d.png)
+
 ### Post-processing: scar gate
 
 * **Rule:** zero the scar label when fewer than 50 scar voxels are predicted (`PostProcessor`, `scripts/apply_postprocess.py`). Threshold picked by validation sweep (25–100 flat, peak at 50) and frozen; needs only predictions, so the same code runs on blind test data.
@@ -68,4 +87,5 @@
 | Plain (500) | 0.551 | 0.656 | 0.657 |
 | ResEnc-M flat (500) | 0.470 | 0.668 | 0.668 |
 | ResEnc-M regions (501) | 0.491 | 0.677 | 0.688 |
+| ResEnc-M regions + 2.5D (502) | 0.536 | 0.683 | 0.642 |
 

@@ -5,7 +5,12 @@ venv/
 *.egg-info/
 
 # Large Medical Datasets & Binaries (Do NOT push to GitHub)
-var/
+var/emidec_dataset/
+var/nnUNet_raw/
+var/nnUNet_preprocessed/
+var/nnUNet_results/
+var/nnUNet_validation*/
+var/results/*
 *.nii
 *.nii.gz
 *.mhd
@@ -26,3 +31,11 @@ __pycache__/
 
 # IDE
 .idea/
+
+# Small per-run distribution figures linked from NOTES.md (re-included last
+# so this wins over var/results/* and *.png above)
+!var/results/dice_plain.png
+!var/results/dice_resenc.png
+!var/results/dice_regions.png
+!var/results/dice_2.5d.png
+!var/results/dice_distributions.png

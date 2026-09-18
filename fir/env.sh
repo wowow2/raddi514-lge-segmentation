@@ -3,7 +3,7 @@
 #   source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 set -u
 
-# Default: scratch (project filesystem is inode-exhausted; see NOTES).
+# Default: scratch (project filesystem is inode-exhausted).
 # Overridable: export FIR_BASE=/project/def-punithak/aarizvi2/raddi514
 # before sourcing to run from /project if inodes recover.
 export FIR_BASE="${FIR_BASE:-/scratch/aarizvi2/raddi514}"
