@@ -12,7 +12,7 @@ class PolarDataset(Dataset):
     def __init__(self, gt_root: str = DEFAULT_GT_ROOT, pred_dir: str = "var/nnUNet_validation_501_pp", splits_path: str = DEFAULT_SPLITS_PATH,
             fold: int = 0, split: str = "train",R: int = 64, Theta: int = 256):
         self.dataset = EMIDECDataset(gt_root)
-        self.anchor_index = AnchorIndex(pred_dir=pred_dir)
+        self.anchor_index = AnchorIndex(pred_dir=pred_dir, splits_path=splits_path)
         self.R = R
         self.Theta = Theta
         self.split = split
