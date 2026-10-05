@@ -29,17 +29,8 @@ def merge_polar_with_nnunet(
     covered_z: np.ndarray,        # (Z,) bool, slices the polar model ran on
     dilation: int = 2,
     disc_thresh: float = 0.5,
-    erase_stage1: bool = True,
-    paint_thresh: float = 0.0,
 ) -> np.ndarray:
-    """Paint-over rule. Returns merged labels before the scar gate.
-
-    erase_stage1=True (default): stage-1 scar/MVO under coverage is first reset
-    to MYO, so polar fully overwrites (status-quo behavior).
-    erase_stage1=False (additive): stage-1 scar/MVO is never removed; polar may
-    only add scar/MVO onto wall tissue (MYO/SCAR/MVO, never cavity), and painting
-    is restricted to the wall so blood-pool FPs are impossible by construction.
-    """
+    """Paint-over rule. Returns merged labels before the scar gate."""
     merged = nnunet_pred.copy()
     if not covered_z.any():
         return merged
@@ -48,23 +39,18 @@ def merge_polar_with_nnunet(
     in_disc = cart_probs.sum(0) >= disc_thresh
 
     # covered discs
-    if erase_stage1:
-        stage1_sm = np.isin(nnunet_pred, (SCAR, MVO)) & covered_z[None, None, :]
-        merged[stage1_sm] = MYO
+    stage1_sm = np.isin(nnunet_pred, (SCAR, MVO)) & covered_z[None, None, :]
+    merged[stage1_sm] = MYO
 
-    # allowed region (additive mode excludes cavity: stage-1 cavity is trusted)
-    allowed = (MYO, SCAR, MVO, CAV) if erase_stage1 else (MYO, SCAR, MVO)
-    region = np.isin(nnunet_pred, allowed)
+    # allowed region
+    region = np.isin(nnunet_pred, (MYO, SCAR, MVO, CAV))
     if dilation > 0:
         region = ndi.binary_dilation(region, structure=_STRUCT, iterations=dilation)
 
-    # polar scar/mvo paint (optionally gated on polar confidence: additions are
-    # what hurt the both-empty MVO cases, so paint only where polar is sure)
+    # polar scar/mvo paint
     polar_arg = cart_probs.argmax(0)
     paint = (np.isin(polar_arg, (SCAR, MVO)) & region & in_disc
              & covered_z[None, None, :])
-    if paint_thresh > 0:
-        paint &= cart_probs.max(0) >= paint_thresh
     merged[paint] = polar_arg[paint].astype(np.uint8)
     return merged
 
@@ -72,12 +58,9 @@ class PolarMerger:
     """Run a trained PolarUNet on one case and merge into nnU-Net's labels."""
 
     def __init__(self, model, dilation: int = 2, gate: PostProcessor | None = None,
-                 erase_stage1: bool = True, paint_thresh: float = 0.0,
                  device: str = "cuda" if torch.cuda.is_available() else "cpu"):
         self.model = model.to(device).eval()
         self.dilation = dilation
-        self.erase_stage1 = erase_stage1
-        self.paint_thresh = paint_thresh
         self.gate = gate if gate is not None else PostProcessor()
         self.device = device
 
@@ -103,9 +86,7 @@ class PolarMerger:
         covered = np.zeros(Z, bool)
         covered[list(pp)] = True
         cart = polar_probs_to_cartesian(pp, transform, H, W, Z)
-        merged = merge_polar_with_nnunet(nnunet_pred, cart, covered, self.dilation,
-                                           erase_stage1=self.erase_stage1,
-                                           paint_thresh=self.paint_thresh)
+        merged = merge_polar_with_nnunet(nnunet_pred, cart, covered, self.dilation)
         return self.gate(merged) if apply_gate else merged
 
 

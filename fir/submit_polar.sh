@@ -6,7 +6,10 @@
 #   ./submit_polar.sh all                # all 5 folds sequentially (~4h)
 #   ./submit_polar.sh 3 --time=03:00:00  # custom wall time
 #   ./submit_polar.sh 3 --epochs=100     # custom epoch count
+#   ./submit_polar.sh all --use-radius   # + normalized-radius input channel (~4h)
 #
+# Variants train into separate model dirs (checkpoints are not compatible
+# across input-channel counts), and get suffixed job/log names.
 # Expects the upload bundle unpacked at $FIR_BASE/polar_data/:
 #   polar_data/emidec_train/  (Case_*/Images + Contours)
 #   polar_data/splits_final.json
@@ -21,11 +24,15 @@ cd "$FIR_BASE"
 
 FOLD="${1:-3}"
 EPOCHS=60
+RADIUS_FLAG=""
+MODEL_SUBDIR="polar_models"
+TAG=""
 if [[ "$FOLD" == "all" ]]; then TIME="04:00:00"; else TIME="01:30:00"; fi
 for arg in "${@:2}"; do
   case "$arg" in
     --time=*) TIME="${arg#--time=}" ;;
     --epochs=*) EPOCHS="${arg#--epochs=}" ;;
+    --use-radius) RADIUS_FLAG="--use-radius"; MODEL_SUBDIR="polar_models_radius"; TAG="_radius" ;;
     *) echo "Unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
@@ -36,8 +43,8 @@ for p in "$DATA/emidec_train" "$DATA/splits_final.json" "$DATA/501_pp"; do
   [[ -e "$p" ]] || { echo "missing bundle path: $p" >&2; exit 1; }
 done
 
-JOB_NAME="polar_${FOLD}"
-OUT="logs/polar_${FOLD}_%j.out"
+JOB_NAME="polar${TAG}_${FOLD}"
+OUT="logs/polar${TAG}_${FOLD}_%j.out"
 
 SBATCH_FILE="$(mktemp /tmp/submit_polar_${FOLD}_XXXX.sh)"
 cat > "$SBATCH_FILE" <<EOF
@@ -53,14 +60,14 @@ cat > "$SBATCH_FILE" <<EOF
 source "${HERE}/env.sh"
 cd "\$FIR_BASE"
 
-# polar fold ${FOLD} | ${EPOCHS} epochs | batch 16
+# polar fold ${FOLD} | ${EPOCHS} epochs | batch 16 ${RADIUS_FLAG}
 python "${REPO}/scripts/train_polar.py" --fold ${FOLD} --epochs ${EPOCHS} \
   --batch-size 16 --gt-root "${DATA}/emidec_train" \
   --splits "${DATA}/splits_final.json" --pred-dir "${DATA}/501_pp" \
-  --save-dir "${DATA}/polar_models" --num-workers 2
+  --save-dir "${DATA}/${MODEL_SUBDIR}" --num-workers 2 ${RADIUS_FLAG}
 EOF
 
-mkdir -p logs "$DATA/polar_models"
+mkdir -p logs "$DATA/${MODEL_SUBDIR}"
 sbatch --test-only "$SBATCH_FILE"
 sbatch "$SBATCH_FILE"
 squeue -u "$USER"
