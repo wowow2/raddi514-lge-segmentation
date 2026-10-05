@@ -2,13 +2,17 @@
 # Single-GPU polar training on Fir. NOT an array: 5 folds x 60 epochs of a
 # ~100k-param strip U-Net fits one short job.
 #
-#   ./submit_polar.sh 3       # fold-3 pilot (default, ~1.5h)
-#   ./submit_polar.sh all     # all 5 folds sequentially (~4h)
+#   ./submit_polar.sh 3                  # fold-3 pilot (default, ~1.5h)
+#   ./submit_polar.sh all                # all 5 folds sequentially (~4h)
+#   ./submit_polar.sh 3 --time=03:00:00  # custom wall time
+#   ./submit_polar.sh 3 --epochs=100     # custom epoch count
 #
 # Expects the upload bundle unpacked at $FIR_BASE/polar_data/:
 #   polar_data/emidec_train/  (Case_*/Images + Contours)
 #   polar_data/splits_final.json
 #   polar_data/501_pp/fold_*/validation/*.nii.gz
+#
+# Runs sbatch --test-only first and aborts if the dry run fails.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -16,7 +20,15 @@ source "$HERE/env.sh"
 cd "$FIR_BASE"
 
 FOLD="${1:-3}"
+EPOCHS=60
 if [[ "$FOLD" == "all" ]]; then TIME="04:00:00"; else TIME="01:30:00"; fi
+for arg in "${@:2}"; do
+  case "$arg" in
+    --time=*) TIME="${arg#--time=}" ;;
+    --epochs=*) EPOCHS="${arg#--epochs=}" ;;
+    *) echo "Unknown arg: $arg" >&2; exit 1 ;;
+  esac
+done
 
 REPO="${POLAR_REPO:-/scratch/aarizvi2/raddi514code}"
 DATA="$FIR_BASE/polar_data"
@@ -26,13 +38,29 @@ done
 
 JOB_NAME="polar_${FOLD}"
 OUT="logs/polar_${FOLD}_%j.out"
-mkdir -p logs "$DATA/polar_models"
 
-sbatch --account=def-punithak \
-  --gpus-per-node=nvidia_h100_80gb_hbm3_2g.20gb:1 \
-  --cpus-per-task=4 --mem=16G --time="$TIME" \
-  --job-name="$JOB_NAME" --output="$OUT" \
-  --wrap="source '$HERE/env.sh' && cd '\$FIR_BASE' && python '$REPO/scripts/train_polar.py' \
-    --fold '$FOLD' --epochs 60 --batch-size 16 \
-    --gt-root '$DATA/emidec_train' --splits '$DATA/splits_final.json' \
-    --pred-dir '$DATA/501_pp' --save-dir '$DATA/polar_models' --num-workers 2"
+SBATCH_FILE="$(mktemp /tmp/submit_polar_${FOLD}_XXXX.sh)"
+cat > "$SBATCH_FILE" <<EOF
+#!/bin/bash
+#SBATCH --account=def-punithak
+#SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_2g.20gb:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=${TIME}
+#SBATCH --job-name=${JOB_NAME}
+#SBATCH --output=${OUT}
+
+source "${HERE}/env.sh"
+cd "\$FIR_BASE"
+
+# polar fold ${FOLD} | ${EPOCHS} epochs | batch 16
+python "${REPO}/scripts/train_polar.py" --fold ${FOLD} --epochs ${EPOCHS} \
+  --batch-size 16 --gt-root "${DATA}/emidec_train" \
+  --splits "${DATA}/splits_final.json" --pred-dir "${DATA}/501_pp" \
+  --save-dir "${DATA}/polar_models" --num-workers 2
+EOF
+
+mkdir -p logs "$DATA/polar_models"
+sbatch --test-only "$SBATCH_FILE"
+sbatch "$SBATCH_FILE"
+squeue -u "$USER"
