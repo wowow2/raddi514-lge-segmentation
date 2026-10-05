@@ -85,7 +85,7 @@ class CaseAnchors:
 
 class AnchorIndex:
     def __init__(self, pred_dir: str, splits_path: str = DEFAULT_SPLITS_PATH):
-        with open(DEFAULT_SPLITS_PATH) as f:
+        with open(splits_path) as f:
             splits = json.load(f)
         self.splits = splits
         self.case_to_path: dict[str, Path] = {}
