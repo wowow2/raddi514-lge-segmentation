@@ -76,6 +76,18 @@
 
 ![2.5d per-case Dice](var/results/dice_2.5d.png)
 
+### Polar cascade (stage-2 strip U-Net on 501-regions preds, gated)
+
+| Variant | Cavity | Myo | Scar | MVO | **All** |
+|---|---|---|---|---|---|
+| erase, d=2 | 0.931 | 0.832 | 0.661 | 0.527 | **0.738** |
+| erase, d=0 | 0.931 | 0.832 | 0.663 | 0.526 | **0.738** |
+| additive, d=2 | 0.932 | 0.835 | 0.666 | 0.543 | **0.744** |
+| additive, d=0 | 0.932 | 0.835 | 0.670 | 0.558 | **0.749** |
+| additive, d=0, τ=0.5 | 0.932 | 0.835 | 0.679 | 0.569 | **0.754** |
+| additive, d=0, τ=0.7 | 0.932 | 0.835 | 0.695 | 0.576 | **0.759** |
+| additive, d=0, τ=0.9 | 0.932 | 0.835 | 0.681 | 0.588 | **0.759** |
+
 ### Post-processing: scar gate
 
 * **Rule:** zero the scar label when fewer than 50 scar voxels are predicted (`PostProcessor`, `scripts/apply_postprocess.py`). Threshold picked by validation sweep (25–100 flat, peak at 50) and frozen; needs only predictions, so the same code runs on blind test data.
