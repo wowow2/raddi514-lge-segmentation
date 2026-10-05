@@ -84,7 +84,7 @@ class CaseAnchors:
         return AnchorData(centers=centers, radii=radii, myo_container=myo_container)
 
 class AnchorIndex:
-    def __init__(self, pred_dir: str):
+    def __init__(self, pred_dir: str, splits_path: str = DEFAULT_SPLITS_PATH):
         with open(DEFAULT_SPLITS_PATH) as f:
             splits = json.load(f)
         self.splits = splits

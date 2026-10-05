@@ -58,7 +58,7 @@ class PolarDataset(Dataset):
                     self.skipped_slices += 1
 
     @staticmethod
-    def _normalize_slice(img_slice: np.ndarray) -> np.ndarray:
+    def normalize_slice(img_slice: np.ndarray) -> np.ndarray:
         p1, p99 = np.percentile(img_slice, 1), np.percentile(img_slice, 99)
         clipped = np.clip(img_slice, p1, p99)
         denom = max(p99 - p1, 1e-5)
@@ -74,7 +74,7 @@ class PolarDataset(Dataset):
         gt_z = gt_vol[:, :, z]
 
         # Normalize and convert to tensors
-        norm_slice = torch.from_numpy(self._normalize_slice(vol_z)).float().unsqueeze(0)
+        norm_slice = torch.from_numpy(self.normalize_slice(vol_z)).float().unsqueeze(0)
         norm_gt = torch.from_numpy(gt_z).long()
 
         # Precomputed transform

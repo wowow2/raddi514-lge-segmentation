@@ -14,7 +14,7 @@ class PolarTransform:
         self.Theta = Theta
 
     def _resample(self, tensor: torch.Tensor, grid: torch.Tensor,
-                out_spatial_shape: tuple[int, int], is_mask: bool = False) -> torch.Tensor:
+                out_spatial_shape: tuple[int, int], is_mask: bool = False, circular_pad_w: bool = False,) -> torch.Tensor:
         """
         Handles rank expansion, grid sample, and reshaping
         """
@@ -24,6 +24,9 @@ class PolarTransform:
         x = tensor.float()
         while x.ndim < 4:
             x = x.unsqueeze(0)
+
+        if circular_pad_w:
+            x = F.pad(x, (1, 1, 0, 0), mode="circular")
 
         mode= "nearest" if is_mask else "bilinear"
         sampled = F.grid_sample(x, grid, mode=mode, padding_mode="zeros", align_corners=True)
@@ -75,7 +78,8 @@ class PolarTransform:
         theta = torch.atan2(delta_y, delta_x)
 
         norm_r = 2.0 * (r / rmax) - 1.0
-        norm_theta = theta / torch.pi
+        col = (theta + torch.pi) / (2.0 * torch.pi) * self.Theta  # [0, Theta]
+        norm_theta = 2.0 * (col + 1.0) / (self.Theta + 1.0) - 1.0
 
         return torch.stack([norm_theta, norm_r], dim=-1).unsqueeze(0)
 
@@ -94,6 +98,6 @@ class PolarTransform:
             H, W = self.anchors.myo_container.shape[:2]
 
         grid = self._build_inverse_grid(z, H, W, device=polar_tensor.device)
-        return self._resample(polar_tensor, grid, (H, W), is_mask)
+        return self._resample(polar_tensor, grid, (H, W), is_mask, circular_pad_w=True)
 
 
