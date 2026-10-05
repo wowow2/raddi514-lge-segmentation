@@ -30,6 +30,7 @@ def merge_polar_with_nnunet(
     dilation: int = 2,
     disc_thresh: float = 0.5,
     erase_stage1: bool = True,
+    paint_thresh: float = 0.0,
 ) -> np.ndarray:
     """Paint-over rule. Returns merged labels before the scar gate.
 
@@ -57,10 +58,13 @@ def merge_polar_with_nnunet(
     if dilation > 0:
         region = ndi.binary_dilation(region, structure=_STRUCT, iterations=dilation)
 
-    # polar scar/mvo paint
+    # polar scar/mvo paint (optionally gated on polar confidence: additions are
+    # what hurt the both-empty MVO cases, so paint only where polar is sure)
     polar_arg = cart_probs.argmax(0)
     paint = (np.isin(polar_arg, (SCAR, MVO)) & region & in_disc
              & covered_z[None, None, :])
+    if paint_thresh > 0:
+        paint &= cart_probs.max(0) >= paint_thresh
     merged[paint] = polar_arg[paint].astype(np.uint8)
     return merged
 
@@ -68,11 +72,12 @@ class PolarMerger:
     """Run a trained PolarUNet on one case and merge into nnU-Net's labels."""
 
     def __init__(self, model, dilation: int = 2, gate: PostProcessor | None = None,
-                 erase_stage1: bool = True,
+                 erase_stage1: bool = True, paint_thresh: float = 0.0,
                  device: str = "cuda" if torch.cuda.is_available() else "cpu"):
         self.model = model.to(device).eval()
         self.dilation = dilation
         self.erase_stage1 = erase_stage1
+        self.paint_thresh = paint_thresh
         self.gate = gate if gate is not None else PostProcessor()
         self.device = device
 
@@ -99,7 +104,8 @@ class PolarMerger:
         covered[list(pp)] = True
         cart = polar_probs_to_cartesian(pp, transform, H, W, Z)
         merged = merge_polar_with_nnunet(nnunet_pred, cart, covered, self.dilation,
-                                           erase_stage1=self.erase_stage1)
+                                           erase_stage1=self.erase_stage1,
+                                           paint_thresh=self.paint_thresh)
         return self.gate(merged) if apply_gate else merged
 
 

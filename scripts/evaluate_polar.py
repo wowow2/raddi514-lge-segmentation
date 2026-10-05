@@ -55,6 +55,8 @@ def parse_args():
     parser.add_argument("--no-gate", action="store_true", help="Disable the 50-voxel post-processor scar gate")
     parser.add_argument("--additive", action="store_true",
                         help="Never erase stage-1 scar/MVO; polar may only add scar/MVO onto wall tissue")
+    parser.add_argument("--paint-thresh", type=float, default=0.0,
+                        help="Paint polar scar/MVO only where polar max-prob >= thresh (default: 0.0, no gating)")
     parser.add_argument("--device", default=None, help="Device to use ('cuda' or 'cpu')")
     return parser.parse_args()
 
@@ -104,7 +106,8 @@ def main():
         print(f"\n--- Evaluating Fold {fold_idx} ({len(split['val'])} cases) ---")
         model = load_fold_model(ckpt_path, device=device)
         merger = PolarMerger(model=model, dilation=args.dilation, gate=gate,
-                             erase_stage1=not args.additive, device=device)
+                             erase_stage1=not args.additive,
+                             paint_thresh=args.paint_thresh, device=device)
 
         fold_val_dir = Path(args.pred_out_dir) / f"fold_{fold_idx}" / "validation"
         fold_val_dir.mkdir(parents=True, exist_ok=True)
