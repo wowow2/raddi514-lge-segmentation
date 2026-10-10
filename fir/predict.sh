@@ -10,6 +10,7 @@
 #   ./predict.sh 501 --local --parts 4  # same, 4 parallel procs per fold (keep parts*threads <= cores)
 #   ./predict.sh 501 --pack     # after predictions finish: tar preds, print scp line
 #   ./predict.sh 500 --plans=nnUNetPlans --config=2d
+#   ./predict.sh 500 --tr=nnUNetTrainer_probabilisticOversampling
 #
 # Uses -chk checkpoint_best.pth explicitly (predict defaults to final,
 # which wall-stopped runs lack) — best is the correct checkpoint anyway.
@@ -19,9 +20,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/env.sh"
 cd "$FIR_BASE"
 
-DATASET="${1:?Usage: predict.sh <dataset-id> [--pack] [--cpu] [--local] [--parts=N] [--plans=X] [--config=Y]}"
+DATASET="${1:?Usage: predict.sh <dataset-id> [--pack] [--cpu] [--local] [--parts=N] [--plans=X] [--config=Y] [--tr=Trainer]}"
 PLAN="nnUNetResEncUNetMPlans"
 CONFIG="2d"
+TR=""
 PACK=0
 LOCAL=0
 PARTS=1
@@ -42,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --cpu) CPU=1; shift ;;
     --plans=*) PLAN="${1#--plans=}"; shift ;;
     --config=*) CONFIG="${1#--config=}"; shift ;;
+    --tr=*) TR="${1#--tr=}"; shift ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -58,7 +61,12 @@ if [[ "$CPU" -eq 1 ]]; then
 fi
 
 NAME="$(resolve_ds "$DATASET")"
-PREDROOT="$nnUNet_results/$NAME/preds_${PLAN}_${CONFIG}"
+# Trainer suffix keeps custom-trainer preds off the default path (which the
+# locked post-processing and scoring assume); empty for the default trainer.
+TSUFFIX=""
+TR_FLAG=""
+if [[ -n "$TR" ]]; then TSUFFIX="_${TR}"; TR_FLAG="-tr $TR"; fi
+PREDROOT="$nnUNet_results/$NAME/preds_${PLAN}_${CONFIG}${TSUFFIX}"
 
 if [[ "$LOCAL" -eq 1 ]]; then
   # Login-node style: CPU inference in this shell, no Slurm job.
@@ -70,7 +78,7 @@ if [[ "$LOCAL" -eq 1 ]]; then
     for p in $(seq 0 $((PARTS - 1))); do
       nnUNetv2_predict -d "$DATASET" -i "$nnUNet_raw/$NAME/imagesTr" \
         -o "$PREDROOT/fold_$f/validation" -f "$f" -c "$CONFIG" -p "$PLAN" \
-        -chk checkpoint_best.pth -device cpu --continue_prediction --disable_progress_bar \
+        ${TR_FLAG} -chk checkpoint_best.pth -device cpu --continue_prediction --disable_progress_bar \
         -num_parts "$PARTS" -part_id "$p" &
     done
     wait
@@ -101,13 +109,13 @@ cd "\$FIR_BASE"
 mkdir -p logs
 ${EXTRA_LINES}
 
-# ${NAME} | ${PLAN} | ${CONFIG} | checkpoint_best (explicit)
+# ${NAME} | ${PLAN} | ${CONFIG} ${TR_FLAG} | checkpoint_best (explicit)
 for f in 0 1 2 3 4; do
   mkdir -p "${PREDROOT}/fold_\$f/validation"
   for p in \$(seq 0 $((PARTS - 1))); do
     nnUNetv2_predict -d ${DATASET} -i "\$nnUNet_raw/${NAME}/imagesTr" \\
       -o "${PREDROOT}/fold_\$f/validation" -f \$f -c ${CONFIG} -p ${PLAN} \\
-      -chk checkpoint_best.pth ${DEVICE_ARGS} --continue_prediction --disable_progress_bar \\
+      ${TR_FLAG} -chk checkpoint_best.pth ${DEVICE_ARGS} --continue_prediction --disable_progress_bar \\
       -num_parts ${PARTS} -part_id \$p &
   done
   wait

@@ -4,26 +4,29 @@
 #   ./collect.sh 501                 # verify only (defaults: ResEncM, 2d)
 #   ./collect.sh 501 --pack          # verify + tar results dir for scp
 #   ./collect.sh 502 --plans=nnUNetPlans --config=3d_fullres --pack
+#   ./collect.sh 500 --tr=nnUNetTrainer_probabilisticOversampling --pack
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$HERE/env.sh"
 
-DATASET="${1:?Usage: collect.sh <dataset-id> [--pack] [--plans=X] [--config=Y]}"
+DATASET="${1:?Usage: collect.sh <dataset-id> [--pack] [--plans=X] [--config=Y] [--tr=Trainer]}"
 PLAN="nnUNetResEncUNetMPlans"
 CONFIG="2d"
+TRDIR="nnUNetTrainer"
 PACK=0
 for arg in "${@:2}"; do
   case "$arg" in
     --pack) PACK=1 ;;
     --plans=*) PLAN="${arg#--plans=}" ;;
     --config=*) CONFIG="${arg#--config=}" ;;
+    --tr=*) TRDIR="${arg#--tr=}" ;;
     *) echo "Unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
 
 NAME="$(resolve_ds "$DATASET")"
-DDIR="$nnUNet_results/$NAME/nnUNetTrainer__${PLAN}__${CONFIG}"
+DDIR="$nnUNet_results/$NAME/${TRDIR}__${PLAN}__${CONFIG}"
 
 missing=0
 for f in 0 1 2 3 4; do

@@ -5,6 +5,7 @@
 #   ./submit.sh 501 --continue                     # resume from checkpoint_latest, 12h
 #   ./submit.sh 502 --plans=nnUNetPlans --config=3d_fullres
 #   ./submit.sh 501 --continue --time=06:00:00
+#   ./submit.sh 500 --tr=nnUNetTrainer_probabilisticOversampling
 #
 # Runs sbatch --test-only first and aborts if the dry run fails.
 # Never submit --continue while the old array is still running (checkpoint race).
@@ -14,8 +15,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/env.sh"
 cd "$FIR_BASE"
 
-DATASET="${1:?Usage: submit.sh <dataset-id> [--continue] [--time=HH:MM:SS] [--plans=X] [--config=Y]}"
+DATASET="${1:?Usage: submit.sh <dataset-id> [--continue] [--time=HH:MM:SS] [--plans=X] [--config=Y] [--tr=Trainer]}"
 CONTINUE_FLAG=""
+TR_FLAG=""
 TIME="23:00:00"
 PLAN="nnUNetResEncUNetMPlans"
 CONFIG="2d"
@@ -25,6 +27,7 @@ for arg in "${@:2}"; do
     --time=*) TIME="${arg#--time=}" ;;
     --plans=*) PLAN="${arg#--plans=}" ;;
     --config=*) CONFIG="${arg#--config=}" ;;
+    --tr=*) TR_FLAG="-tr ${arg#--tr=}" ;;
     *) echo "Unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
@@ -53,8 +56,8 @@ cp -r "\$FIR_BASE/emidec_nnunet/nnUNet_raw" "\$SLURM_TMPDIR/nn/"
 export nnUNet_preprocessed="\$SLURM_TMPDIR/nn/nnUNet_preprocessed"
 export nnUNet_raw="\$SLURM_TMPDIR/nn/nnUNet_raw"
 
-# ${NAME} | ${PLAN} | ${CONFIG}
-nnUNetv2_train ${DATASET} ${CONFIG} \$SLURM_ARRAY_TASK_ID -p ${PLAN} ${CONTINUE_FLAG}
+# ${NAME} | ${PLAN} | ${CONFIG} ${TR_FLAG}
+nnUNetv2_train ${DATASET} ${CONFIG} \$SLURM_ARRAY_TASK_ID -p ${PLAN} ${TR_FLAG} ${CONTINUE_FLAG}
 EOF
 
 mkdir -p logs
