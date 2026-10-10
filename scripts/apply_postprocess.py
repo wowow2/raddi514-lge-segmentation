@@ -14,7 +14,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.datautils.postprocess import MIN_SCAR_VOXELS, PostProcessor
+from src.datautils.postprocess import MIN_MVO_VOXELS, MIN_SCAR_VOXELS, PostProcessor
 
 
 def main():
@@ -22,8 +22,10 @@ def main():
     parser.add_argument("--pred-dir", required=True)
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--min-scar-voxels", type=int, default=MIN_SCAR_VOXELS)
+    parser.add_argument("--min-mvo-voxels", type=int, default=MIN_MVO_VOXELS)
     args = parser.parse_args()
-    post = PostProcessor(min_scar_voxels=args.min_scar_voxels)
+    post = PostProcessor(min_scar_voxels=args.min_scar_voxels,
+                         min_mvo_voxels=args.min_mvo_voxels)
     print(f"using {post}")
 
     n = 0

@@ -45,6 +45,7 @@ PRED_RUNS = [
     ("plain", "var/nnUNet_validation_pp"),
     ("resenc", "var/nnUNet_validation_500resenc_pp"),
     ("regions", "var/nnUNet_validation_501_pp"),
+    ("polar", "var/polar_preds"),
 ]
 SPLITS_PATH = "var/nnUNet_validation/splits_final.json"
 

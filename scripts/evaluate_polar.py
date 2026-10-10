@@ -20,7 +20,7 @@ from src.config import (
 )
 from src.datautils.emidec_dataset import EMIDECDataset
 from src.datautils.evaluator import DatasetEvaluator
-from src.datautils.postprocess import MIN_SCAR_VOXELS, PostProcessor
+from src.datautils.postprocess import MIN_MVO_VOXELS, MIN_SCAR_VOXELS, PostProcessor
 from src.polar.anchors import AnchorIndex
 from src.polar.merge import PolarMerger
 from src.polar.model import PolarUNet
@@ -52,6 +52,7 @@ def parse_args():
     parser.add_argument("--splits", default=DEFAULT_SPLITS_PATH, help="Path to splits_final.json")
     parser.add_argument("--dilation", type=int, default=2, help="In-plane paint-over dilation (default: 2)")
     parser.add_argument("--min-scar-voxels", type=int, default=MIN_SCAR_VOXELS, help="Post-processor scar gate threshold")
+    parser.add_argument("--min-mvo-voxels", type=int, default=MIN_MVO_VOXELS, help="Post-processor MVO gate threshold")
     parser.add_argument("--no-gate", action="store_true", help="Disable the 50-voxel post-processor scar gate")
     parser.add_argument("--device", default=None, help="Device to use ('cuda' or 'cpu')")
     return parser.parse_args()
@@ -77,7 +78,8 @@ def load_fold_model(ckpt_path: Path, device: str) -> PolarUNet:
 def main():
     args = parse_args()
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    gate = None if args.no_gate else PostProcessor(min_scar_voxels=args.min_scar_voxels)
+    gate = None if args.no_gate else PostProcessor(min_scar_voxels=args.min_scar_voxels,
+                                                    min_mvo_voxels=args.min_mvo_voxels)
 
     dataset = EMIDECDataset(args.gt_root)
     evaluator = DatasetEvaluator()

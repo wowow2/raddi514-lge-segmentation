@@ -45,6 +45,9 @@ class DiceDistributionPlot:
     def _panel(self, ax, name, lbl):
         """One violin + strip for a single run and label."""
         vals = [v for v, _, _ in self._data[name][lbl]]
+        if not vals:  # run with no predictions on disk: leave panel empty
+            ax.text(0, 0.5, "no data", color="white", ha="center")
+            return
         parts = ax.violinplot([vals], positions=[0], showmeans=True, widths=0.6)
         for pc in parts["bodies"]:
             pc.set_facecolor("#666666")
@@ -103,6 +106,8 @@ class DiceDistributionPlot:
             ax.tick_params(colors="white")
             for xi, name in enumerate(self.cv.run_names):
                 vals = [v for v, _, _ in self._data[name][lbl]]
+                if not vals:
+                    continue
                 parts = ax.violinplot([vals], positions=[xi], showmeans=True,
                                       widths=0.6)
                 for pc in parts["bodies"]:
@@ -147,6 +152,9 @@ class DiceDistributionPlot:
         nrows = (n + ncols - 1) // ncols
         os.makedirs(out_dir, exist_ok=True)
         for name in self.cv.run_names:
+            if not any(self._data[name][lbl] for lbl in self.labels):
+                print(f"skipped -> {prefix}_{name}.png (no predictions on disk)")
+                continue
             fig, axes = plt.subplots(nrows, ncols, figsize=(13, 5 * nrows),
                                      sharey=True)
             axes = list(np.ravel(np.array(axes, dtype=object)))

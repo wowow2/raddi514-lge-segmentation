@@ -1,7 +1,7 @@
 from .emidec_dataset import EMIDECDataset
 from .emidec_loader import EMIDECCase, parse_metadata_file
 from .metrics import SegmentationMetrics
-from .postprocess import MIN_SCAR_VOXELS, SCAR_LABEL, PostProcessor
+from .postprocess import MIN_MVO_VOXELS, MIN_SCAR_VOXELS, MVO_LABEL, SCAR_LABEL, PostProcessor
 from .nnunet_export import (
     LABEL_NAMES,
     REGION_CLASS_ORDER,
@@ -21,6 +21,8 @@ __all__ = [
     "PostProcessor",
     "SCAR_LABEL",
     "MIN_SCAR_VOXELS",
+    "MVO_LABEL",
+    "MIN_MVO_VOXELS",
     "NnunetExporter",
     "LABEL_NAMES",
     "REGION_LABEL_NAMES",

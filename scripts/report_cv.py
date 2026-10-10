@@ -17,6 +17,7 @@ RUNS = [
     ("resenc", "var/nnUNet_validation_500resenc_pp"),
     ("regions", "var/nnUNet_validation_501_pp"),
     ("2.5d", "var/nnUNet_validation_502_pp"),
+    ("polar", "var/polar_preds"),  # rsync from Fir; missing files degrade gracefully
 ]
 FIGURE_OUT = "var/results/dice_distributions.png"
 TABLE_OUT = "var/results/bad_performers.md"

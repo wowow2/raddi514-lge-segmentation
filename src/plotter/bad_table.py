@@ -61,14 +61,15 @@ class BadPerformersTable:
     # ----------------------------------------------------------------- render
     def _worst(self, entry):
         """(slice, tag) from the best run's worst *awful* label."""
-        best = self.cv.run_names[-1]
+        avail = [n for n in self.cv.run_names if n in entry["dice"]]
+        best = avail[-1]
         dd = entry["dice"][best]
         pred = entry["preds"][best]
         gt_arr = self.cv.gt_array(
             self.cv.dataset.get(entry["cid"]))
         awful = [lbl for lbl in self.labels
                  if any(entry["dice"][n][lbl] < self.awful_below
-                        for n in self.cv.run_names)]
+                        for n in self.cv.run_names if n in entry["dice"])]
         lbl = min(awful, key=lambda l: dd[l])
         if entry["gt"][lbl] == 0:
             vols = {n: int((entry["preds"][n] == lbl).sum())
@@ -78,7 +79,8 @@ class BadPerformersTable:
         return worst_slice(gt_arr, pred, lbl), LABEL_NAMES[lbl]
 
     def to_markdown(self):
-        short = {"plain": "pl", "resenc": "re", "regions": "rg"}
+        short = {"plain": "pl", "resenc": "re", "regions": "rg",
+                 "polar": "po"}
         dice_cols = " | ".join(
             f"{LABEL_NAMES[lbl]} ({'/'.join(short.get(n, n) for n in self.cv.run_names)})"
             for lbl in self.labels)
@@ -87,10 +89,11 @@ class BadPerformersTable:
                  "|" + "|".join(["---"] * (5 + 2 * len(self.labels))) + "|"]
         for e in self.rows():
             coldice = " | ".join(
-                "/".join(f"{e['dice'][n][lbl]:.2f}" for n in self.cv.run_names)
+                "/".join(f"{e['dice'][n][lbl]:.2f}" if n in e["dice"] else "—"
+                         for n in self.cv.run_names)
                 for lbl in self.labels)
             gtvol = " | ".join(str(e["gt"][lbl]) for lbl in self.labels)
-            zero = sorted({n for n in self.cv.run_names
+            zero = sorted({n for n in self.cv.run_names if n in e["dice"]
                            if any(e["dice"][n][lbl] == 0.0 for lbl in self.labels)})
             ws, tag = self._worst(e)
             lines.append(
