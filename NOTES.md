@@ -76,10 +76,24 @@
 
 ![2.5d per-case Dice](var/results/dice_2.5d.png)
 
+### nnUNet ResEnc-M + probabilistic oversampling (Dataset500, foreground-emphasis trainer)
+
+| Class | Dice mean | Dice std | HD95 mean | HD95 std |
+|---|---|---|---|---|
+| Cavity | 0.933 | 0.021 | 9.14 | 27.62 |
+| Myo | 0.835 | 0.049 | 6.02 | 16.82 |
+| Scar | 0.462 | 0.319 | 19.82 | 28.41 |
+| Scar (gated) | 0.690 | 0.264 | 17.84 | 25.25 |
+| MVO | 0.703 | 0.388 | 16.33 | 9.22 |
+| **All (gated)** | **0.790** | **0.256** | **10.63** | — |
+
+![oversampling per-case Dice](var/results/dice_over.png)
+
 ### Polar cascade (stage-2 strip U-Net on 501-regions preds, gated)
 
 | Variant | Cavity | Myo | Scar | MVO | **All** |
 |---|---|---|---|---|---|
+| erase, d=0 | 0.931 | 0.832 | 0.663 | 0.526 | **0.738** |
 | additive, d=0, τ=0.7 | 0.932 | 0.835 | 0.695 | 0.689 | **0.788** |
 
 ### Post-processing: scar + MVO gates
@@ -95,4 +109,4 @@
 | ResEnc-M flat (500) | 0.470 | 0.668 | 0.668 | 0.721 |
 | ResEnc-M regions (501) | 0.491 | 0.677 | 0.688 | 0.696 |
 | ResEnc-M regions + 2.5D (502) | 0.536 | 0.683 | 0.642 | 0.667 |
-
+| ResEnc-M + prob. oversampling (500) | 0.462 | 0.690 | 0.694 | 0.703 |
