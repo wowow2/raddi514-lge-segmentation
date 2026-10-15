@@ -29,7 +29,8 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 
-# IDE
+# Local config / IDE
+.env
 .idea/
 
 # Small per-run distribution figures linked from NOTES.md (re-included last
