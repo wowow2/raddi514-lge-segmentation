@@ -176,12 +176,18 @@ scar.summary("dice")
 
 ## Adding a model
 
-The trainer accepts an injected model, datasets, and loss, and records
-`model.name`/`model.params` in the manifest:
+Two routes reach the same downstream pipeline (post-processing, scoring,
+`runs.py` — all model-agnostic):
+
+- **nnU-Net model**: train on Fir with `fir/submit.sh`; select the trainer with
+  `--tr` (plain `nnUNetTrainer`, ResEnc variants, region-label trainers, ...)
+  and record it at evaluation time with
+  `scripts/evaluate_nnunet_cv.py --trainer ... --plans ... --config-name ...`.
+- **Injected Python model** (the polar stage-2 trainer is one example; the
+  trainer is a generic harness that accepts any model/datasets/loss):
 
 ```python
 from src.polar.trainer import PolarTrainer
-from src.datautils.splits import CVSplits
 
 trainer = PolarTrainer(
     fold=0, save_dir="var/runs/my_model", run_id="my_model_f0",
@@ -192,6 +198,9 @@ trainer = PolarTrainer(
 )
 trainer.fit()
 ```
+
+  Both routes record `model.name`/`model.params` (explicit for the injected
+  path; trainer/plans/config for nnU-Net) so manifests never guess.
 
 The default `PolarDataset` emits one channel per slice. A multi-channel model
 needs its own dataset/preprocessing (or a `NeighborStacker`-based dataset) and a
