@@ -1,20 +1,22 @@
-# RADD I 514 — LGE Cardiac MRI Segmentation
+# LGE Cardiac MRI Segmentation
 
-Segmentation of late gadolinium enhancement (LGE) cardiac MRI on the EMIDEC dataset
-(5 classes: background, LV cavity, myocardium, scar, MVO/no-reflow).
+RADD I 514 course project: segmentation of late gadolinium enhancement (LGE)
+cardiac MRI on the EMIDEC dataset. Five classes: background, LV cavity,
+myocardium, scar, and MVO (no-reflow zone).
 
-A two-stage cascade: an nnU-Net v2 backbone feeds a custom polar-coordinate U-Net,
-followed by anatomical post-processing. Evaluated with 5-fold cross-validation
-(Dice and 95% Hausdorff distance).
+The main approach is a two-stage cascade: an nnU-Net v2 backbone feeds a custom
+polar-coordinate U-Net, followed by anatomical post-processing. All variants
+are evaluated with 5-fold cross-validated Dice and 95th-percentile Hausdorff
+distance.
 
 ## Setup
 
-Python 3.12 (virtualenv at `.venv`). Main dependencies: `torch`, `nnunetv2`,
+Python 3.12, virtualenv at `.venv`. Main dependencies: `torch`, `nnunetv2`,
 `nibabel`, `surface_distance`, `scikit-learn`, `scipy`, `matplotlib`. Tests use
 only the standard library (`unittest`); `pytest` is not required.
 
 Data locations default to `var/` under the repository root and can be
-overridden in `.env` (loaded by `src/config.py`):
+overridden in `.env`, which `src/config.py` loads at import:
 
 | variable | default |
 |---|---|
@@ -23,45 +25,51 @@ overridden in `.env` (loaded by `src/config.py`):
 | `NNUNET_SPLITS_PATH` | `<NNUNET_PRED_DIR>/splits_final.json` |
 | `NNUNET_CV_OUT` | `var/results/nnunet_2d_cv_metrics.json` |
 
-All path arguments are resolved relative to the repository root, so scripts run
-the same from anywhere.
+All path arguments are resolved relative to the repository root, so scripts
+behave the same no matter where they are launched from.
 
 ## Layout
 
-- `src/datautils/` — EMIDEC loading, splits/validation (`splits.py`), shared
+- `src/datautils/`: EMIDEC loading, splits and validation (`splits.py`), shared
   prediction lookup (`predictions.py`), metrics, post-processing, nnU-Net export
-- `src/runs.py` — run manifests, discovery, filtering, completeness checks
-- `src/results.py` — tidy per-case/per-class results and run comparison
-- `src/analysis/probs.py` — out-of-fold probability diagnostics
-- `src/polar/` — polar transform, model, training, checkpoint helpers, prediction, merge
-- `src/viewer/` — interactive case browser
-- `fir/` — SLURM scripts for training and prediction on the Fir cluster
-- `scripts/` — entry points and the `runs.py` query CLI
-- `tests/` — stdlib `unittest` coverage (no pytest required)
+- `src/runs.py`: run manifests, discovery, filtering, completeness checks
+- `src/results.py`: tidy per-case/per-class results and run comparison
+- `src/analysis/probs.py`: out-of-fold probability diagnostics
+- `src/polar/`: polar transform, model, training, checkpoint helpers,
+  prediction, and merge
+- `src/viewer/`: interactive case browser
+- `fir/`: SLURM scripts for training and prediction on the Fir cluster
+- `scripts/`: entry points and the `runs.py` query CLI
+- `tests/`: standard-library `unittest` coverage (no pytest required)
 
 See [`NOTES.md`](NOTES.md) for dataset details and results, and
 [`READINGS.md`](READINGS.md) for references.
 
 ## Experiment metadata
 
-Training, prediction, post-processing, and evaluation write a `run.json`
-manifest next to their output. Manifests for the same `run_id` are merged, so
-each step contributes what it knows:
+Training, prediction, post-processing, and evaluation each write a `run.json`
+manifest next to their output. Manifests with the same `run_id` are merged, so
+every step contributes what it knows:
 
-- `model` — architecture name + constructor parameters, input channels, label scheme
-- `data` — dataset/gt root, splits path and content hash, fold/case counts
-- `training` — seed, epochs, batch size, lr, weight decay, loss, augmentation
-- `inference` — checkpoint choice, device, merge mode/dilation/tau
-- `postprocess` — ordered operations with parameters
-- `parent_run` / `source_run` — producing training run and stage-1 run
-- `paths` — predictions, probabilities, checkpoints, metrics
-- `status` — expected outputs and per-fold prediction coverage
-- `provenance` — git commit/dirty flag, command, package versions, host, time
+- `model`: architecture name and constructor parameters, input channels, label
+  scheme
+- `data`: dataset and gt roots, splits path, splits content hash, fold and case
+  counts
+- `training`: seed, epochs, batch size, lr, weight decay, loss, augmentation
+- `inference`: checkpoint choice, device, merge mode, dilation, tau
+- `postprocess`: ordered operations with parameters
+- `parent_run` / `source_run`: the training run that produced this output and
+  the stage-1 run it builds on
+- `paths`: predictions, probabilities, checkpoints, metrics
+- `status`: expected outputs and per-fold prediction coverage
+- `provenance`: git commit and dirty flag, command, package versions, host,
+  timestamp
 
-Unknown values are stored as `null`, never guessed. Directories created before
-this change are still usable: `RunStore` discovers prediction trees and
-`var/results/*.json` read-only, marks them `provenance.legacy`, and treats
-missing fields as unknown. Attach explicit metadata when you know it:
+Unknown values are stored as `null` and never guessed. Directories created
+before this metadata system existed still work: `RunStore` discovers their
+prediction trees and `var/results/*.json` files read-only, marks them
+`provenance.legacy`, and treats missing fields as unknown. Attach explicit
+metadata whenever you know it:
 
 ```bash
 python scripts/runs.py register 501_regions_pp \
@@ -71,9 +79,9 @@ python scripts/runs.py register 501_regions_pp \
   --description "ResEnc-M, region labels, scar/MVO gates"
 ```
 
-Older metrics JSON (`per_case` with nested `dice`/`hd95`) remain readable and
-are converted to rows on load; fields that cannot be recovered (TP/FP/FN,
-predicted volumes) stay unknown.
+Older metrics files (`per_case` lists with nested `dice`/`hd95`) stay readable;
+they are converted to rows on load, and fields that cannot be recovered (TP,
+FP, FN, predicted volumes) remain unknown.
 
 ## Finding and comparing runs
 
@@ -89,25 +97,34 @@ python scripts/runs.py compare --all --metric hd95 --case-set intersection --csv
 python scripts/runs.py cases --out var/cache/case_metadata.json
 ```
 
-`compare` defaults to the intersection of case sets and refuses runs whose
-per-case folds disagree. The `missing` column counts selected cases absent from
-a run; `excluded` counts cases the run has but that fall outside the comparison
-set. Use `--require-same-cases` to reject runs with non-identical case sets,
-and `--allow-mixed-splits` only when you intentionally ignore differing
-`data.splits_sha256` values. Conflicting manifests are rejected by `compare`
-and flagged by `validate`/`show`.
+Both `results` and `compare` share a flag vocabulary for choosing runs: `--tag`,
+`--model`, `--stage`, and `--parent` are selectors; `--all` sweeps every
+selected run.
 
-`results` prints tidy rows (one per case, fold, and class). Besides
-`--class-name`/`--gt-present` it supports `--pred-empty` (rows with exactly zero
-predicted voxels; runs whose metrics cannot answer this are excluded, unknown
-never counts), `--fp-min`/`--fn-min` for false-positive/negative volume checks,
-and `--fold`/`--group` to narrow by fold or dataset group. Routes go to
-`--csv <file>` (with per-run row counts); `--limit`/`--print-all` control the
-terminal view.
+`compare` defaults to the intersection of case sets and refuses runs whose
+per-case folds disagree. In its output, `missing` counts selected cases that a
+run lacks, and `excluded` counts cases the run has but that fall outside the
+comparison set. `--require-same-cases` rejects runs with non-identical case
+sets. `--allow-mixed-splits` is only for when you intentionally ignore
+differing `data.splits_sha256` values. Conflicting manifests are rejected by
+`compare` and flagged by `validate` and `show`.
+
+`results` prints one row per case, fold, and class. Beyond
+`--class-name`/`--gt-present` it takes:
+
+- `--pred-empty`: rows with exactly zero predicted voxels, i.e. cases where the
+  model predicted an empty structure. Runs whose metrics cannot answer this
+  are excluded; an unknown count never satisfies the filter.
+- `--fp-min` / `--fn-min`: false-positive and false-negative volume checks
+- `--fold`, `--group`: narrow by fold or dataset group
+
+Write the full row set with `--csv <file>`; `--limit` and `--print-all`
+control the terminal view.
 
 `cases` builds a case metadata cache (`src/datautils/case_metadata.py`):
-per-case image/spacing geometry and ground-truth class volumes read directly
-from the NIfTI files, for use in overlays and reports without full evaluation.
+per-case image and spacing geometry plus ground-truth class volumes, read
+directly from the NIfTI files. Useful for overlays and reports without a full
+evaluation.
 
 Python access:
 
@@ -129,7 +146,7 @@ scar.summary("dice")
 ## Workflow
 
 1. Export to nnU-Net format and train on Fir (`scripts/export_nnunet.py`,
-   `fir/submit.sh`). `submit.sh` stores its own nnU-Net results; metadata for
+   `fir/submit.sh`). `submit.sh` keeps its own nnU-Net results; metadata for
    the prediction run is recorded at evaluation time.
 2. Predict (`fir/predict.sh`), then post-process:
 
@@ -140,7 +157,7 @@ scar.summary("dice")
      --run-id 501_pp --parent-run 501 --tag gated
    ```
 
-3. Evaluate; this writes tidy metrics and `run.json`:
+3. Evaluate; this writes tidy metrics and a `run.json`:
 
    ```bash
    python scripts/evaluate_nnunet_cv.py \
@@ -151,10 +168,10 @@ scar.summary("dice")
      --checkpoints var/nnUNet_results/Dataset501_EMIDEC_Regions
    ```
 
-4. Stage 2 (polar). Training writes per-fold `config.json`, checkpoints, and
-   `run.json`; checkpoints embed the same config so evaluation never guesses
-   model flags.
-   Prediction and scoring are separate so gates can change without re-inference:
+4. Stage 2, the polar model. Training writes per-fold `config.json`,
+   checkpoints, and a `run.json`; checkpoints embed the same config so
+   evaluation never has to guess model flags. Prediction and scoring are
+   separate steps so gates can change without re-running inference:
 
    ```bash
    python scripts/predict_polar.py --model-dir var/polar_models \
@@ -169,22 +186,23 @@ scar.summary("dice")
      --out var/results/polar_add_pp.json --run-id polar_add_pp
    ```
 
-   `scripts/evaluate_polar.py --raw` is the one-shot variant that predicts and
-   scores ungated outputs; without `--raw` it preserves the historical
-   gated-output behaviour. `--mode additive --tau ...` reproduces the
-   documented additive merge variant.
+   `scripts/evaluate_polar.py --raw` is the one-shot variant: it predicts and
+   scores ungated outputs in a single command. Without `--raw` it keeps the
+   historical behaviour of reading pre-gated outputs. `--mode additive
+   --tau ...` reproduces the documented additive merge variant.
 
 ## Adding a model
 
-Two routes reach the same downstream pipeline (post-processing, scoring,
-`runs.py` — all model-agnostic):
+Both routes below reach the same downstream pipeline (post-processing,
+scoring, and `runs.py` are all model-agnostic).
 
-- **nnU-Net model**: train on Fir with `fir/submit.sh`; select the trainer with
-  `--tr` (plain `nnUNetTrainer`, ResEnc variants, region-label trainers, ...)
-  and record it at evaluation time with
-  `scripts/evaluate_nnunet_cv.py --trainer ... --plans ... --config-name ...`.
-- **Injected Python model** (the polar stage-2 trainer is one example; the
-  trainer is a generic harness that accepts any model/datasets/loss):
+**nnU-Net model.** Train on Fir with `fir/submit.sh` and pick the trainer with
+`--tr` (plain `nnUNetTrainer`, ResEnc variants, region-label trainers, ...).
+Record the choice at evaluation time with
+`scripts/evaluate_nnunet_cv.py --trainer ... --plans ... --config-name ...`.
+
+**Injected Python model.** The polar trainer is a generic harness: it accepts
+any model, datasets, and loss. The stage-2 polar U-Net is just one example.
 
 ```python
 from src.polar.trainer import PolarTrainer
@@ -199,23 +217,24 @@ trainer = PolarTrainer(
 trainer.fit()
 ```
 
-  Both routes record `model.name`/`model.params` (explicit for the injected
-  path; trainer/plans/config for nnU-Net) so manifests never guess.
+Either way, the manifest records `model.name` and `model.params` (explicit
+parameters for the injected path, trainer/plans/config for nnU-Net), so stored
+metadata never has to guess.
 
 The default `PolarDataset` emits one channel per slice. A multi-channel model
-needs its own dataset/preprocessing (or a `NeighborStacker`-based dataset) and a
-matching prediction path; only model construction is generic today. From the
-CLI: `python scripts/train_polar.py --model-class mypkg.models:MyUNet
+needs its own dataset and preprocessing (or a `NeighborStacker`-based dataset),
+plus a matching prediction path; only model construction is generic today.
+From the CLI: `python scripts/train_polar.py --model-class mypkg.models:MyUNet
 --model-params '{"in_channels": 1}'`.
 
-For it to be usable by the rest of the pipeline, inference must write the same
-`fold_<k>/validation/<EMIDEC_id>.nii.gz` layout (see
-`src/polar/predict.py`) and a `run.json`. Post-processing, scoring, the viewer,
-and `runs.py` then work unchanged.
+To plug into the rest of the pipeline, inference must write the
+`fold_<k>/validation/<EMIDEC_id>.nii.gz` layout (see `src/polar/predict.py`)
+and a `run.json`. Post-processing, scoring, the viewer, and `runs.py` then
+work unchanged.
 
 ## Checks
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests
 .venv/bin/python scripts/runs.py validate --all
 ```
