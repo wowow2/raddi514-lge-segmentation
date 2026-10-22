@@ -1,9 +1,9 @@
-import json
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, nnunet_id_to_case_id
+from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
+from src.datautils.splits import CVSplits
 from src.datautils.emidec_dataset import EMIDECDataset
 from .anchors import AnchorIndex
 from .transforms import PolarTransform
@@ -18,6 +18,8 @@ class PolarDataset(Dataset):
         self.split = split
         self.splits_path = splits_path
         self.fold = fold
+        self.splits = CVSplits.load(splits_path)
+        self.splits.validate().raise_if_invalid()
 
         self.case_ids = self._flatten_case_ids()
 
@@ -33,13 +35,12 @@ class PolarDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def _flatten_case_ids(self):
-        with open(self.splits_path, "r") as f:
-            splits = json.load(f)
-        allowed_nnunet_ids = set(splits[self.fold][self.split])
-        return sorted([
-            nnunet_id_to_case_id(nid) for nid in allowed_nnunet_ids
-        ])
+    def _flatten_case_ids(self) -> list[str]:
+        if self.split == "val":
+            return sorted(self.splits.val_ids(self.fold))
+        if self.split == "train":
+            return sorted(self.splits.train_ids(self.fold))
+        raise ValueError(f"split must be 'train' or 'val', got {self.split!r}")
 
     def _precompute_transforms(self):
         for cid in self.case_ids:

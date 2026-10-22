@@ -2,7 +2,6 @@
 Feature extraction from nnU-Net predictions
 """
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 import nibabel as nib
@@ -16,6 +15,8 @@ from src.config import (
     LABEL_SCAR,
     nnunet_id_to_case_id,
 )
+from src.datautils.predictions import CVPredictionIndex
+from src.datautils.splits import CVSplits
 
 WALL_LABELS = (LABEL_MYOCARDIUM, LABEL_SCAR, LABEL_MVO)
 RADIUS_PADDING = 1.15
@@ -50,6 +51,10 @@ class CaseAnchors:
 
         # interpolate
         valid = ~np.isnan(xc)
+        if not valid.any():
+            raise ValueError(
+                f"{self.pred_path}: no predicted cavity voxels; cannot anchor "
+                "the polar transform")
         z_all = np.arange(Z)
         xc_interp = np.interp(z_all, z_all[valid], xc[valid])
         yc_interp = np.interp(z_all, z_all[valid], yc[valid])
@@ -70,6 +75,10 @@ class CaseAnchors:
 
         # interpolate gappy slices
         valid = ~np.isnan(rmax)
+        if not valid.any():
+            raise ValueError(
+                f"{self.pred_path}: no predicted myocardium/scar/MVO voxels; "
+                "cannot anchor the polar transform")
         z_all = np.arange(Z)
         rmax_interp = np.interp(z_all, z_all[valid], rmax[valid])
         return rmax_interp
@@ -85,19 +94,14 @@ class CaseAnchors:
 
 class AnchorIndex:
     def __init__(self, pred_dir: str, splits_path: str = DEFAULT_SPLITS_PATH):
-        with open(splits_path) as f:
-            splits = json.load(f)
-        self.splits = splits
-        self.case_to_path: dict[str, Path] = {}
-
-        for idx, split in enumerate(splits):
-            for nnunet_id in split["val"]:
-                cid = nnunet_id_to_case_id(nnunet_id)
-                self.case_to_path[cid] = (
-                    Path(pred_dir) / f"fold_{idx}" / "validation" / f"{nnunet_id}.nii.gz"
-                )
+        self.splits = CVSplits.load(splits_path)
+        self.index = CVPredictionIndex(pred_dir, self.splits)
+        self.case_to_path: dict[str, Path] = {
+            cid: ref.path for cid, ref in self.index.items().items()
+        }
 
     def get_path(self, case_id: str) -> Path:
+        case_id = nnunet_id_to_case_id(case_id)
         if case_id not in self.case_to_path:
             raise KeyError(f"Case {case_id} does not exist")
         return self.case_to_path[case_id]

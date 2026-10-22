@@ -20,21 +20,41 @@ class DiceDistributionPlot:
         self.cv = cv_data
         self.labels = labels
         self.awful_below = awful_below
+        self._names = list(cv_data.run_names)
+        self._rng = np.random.default_rng(0)
         self._data = None  # {run: {label: [(dice, group, case_id)]}}
 
     # ------------------------------------------------------------------ data
     def collect(self):
-        data = {name: {lbl: [] for lbl in self.labels}
-                for name in self.cv.run_names}
+        data = {name: {lbl: [] for lbl in self.labels} for name in self._names}
         for fi, nid, case in self.cv.iter_val():
             gt = self.cv.gt_array(case)
-            for name in self.cv.run_names:
+            for name in self._names:
                 pred = self.cv.pred_array(name, fi, nid)
                 if pred is None:
                     continue
                 dd = self.cv.case_dice(pred, gt)
                 for lbl in self.labels:
                     data[name][lbl].append((dd[lbl], case.group, case.case_id))
+        self._data = data
+        return data
+
+    def load_results(self, tables: dict) -> dict:
+        """Fill from saved metrics instead of loading prediction volumes.
+
+        Args:
+            tables: ``{run_name: ResultsTable}`` in display order.
+        """
+        data = {name: {lbl: [] for lbl in self.labels} for name in tables}
+        for name, table in tables.items():
+            for row in table.rows:
+                lbl = row.get("class_id")
+                dice = row.get("dice")
+                if lbl not in data[name] or not row.get("dice_defined") or dice is None:
+                    continue
+                data[name][lbl].append(
+                    (float(dice), row.get("group"), row["case_id"]))
+        self._names = list(tables)
         self._data = data
         return data
 
@@ -54,7 +74,7 @@ class DiceDistributionPlot:
             pc.set_alpha(0.6)
         zero_ids, low = [], []
         for v, grp, cid in self._data[name][lbl]:
-            ax.plot(np.random.uniform(-0.12, 0.12), v, ".",
+            ax.plot(self._rng.uniform(-0.12, 0.12), v, ".",
                     color=self.COLORS.get(grp, "#aaaaaa"), alpha=0.8, ms=7)
             if v == 0.0:
                 zero_ids.append(cid.replace("Case_", ""))
@@ -104,7 +124,7 @@ class DiceDistributionPlot:
             ax.set_ylim(-0.05, 1.05)
             ax.set_ylabel("Dice", color="white")
             ax.tick_params(colors="white")
-            for xi, name in enumerate(self.cv.run_names):
+            for xi, name in enumerate(self._names):
                 vals = [v for v, _, _ in self._data[name][lbl]]
                 if not vals:
                     continue
@@ -115,7 +135,7 @@ class DiceDistributionPlot:
                     pc.set_alpha(0.6)
                 zero_ids, low = [], []
                 for v, grp, cid in self._data[name][lbl]:
-                    ax.plot(xi + np.random.uniform(-0.12, 0.12), v, ".",
+                    ax.plot(xi + self._rng.uniform(-0.12, 0.12), v, ".",
                             color=self.COLORS.get(grp, "#aaaaaa"),
                             alpha=0.8, ms=7)
                     if v == 0.0:
@@ -130,8 +150,8 @@ class DiceDistributionPlot:
                             color="white", fontsize=7, va="center")
                     print(f"  {name} {LABEL_NAMES[lbl]}: zero -> "
                           f"{' '.join(sorted(zero_ids))}")
-            ax.set_xticks(range(len(self.cv.run_names)))
-            ax.set_xticklabels(self.cv.run_names, color="white")
+            ax.set_xticks(range(len(self._names)))
+            ax.set_xticklabels(self._names, color="white")
             ax.grid(axis="y", alpha=0.2)
         for ax in axes[len(self.labels):]:
             ax.axis("off")
@@ -151,7 +171,7 @@ class DiceDistributionPlot:
         ncols = 2
         nrows = (n + ncols - 1) // ncols
         os.makedirs(out_dir, exist_ok=True)
-        for name in self.cv.run_names:
+        for name in self._names:
             if not any(self._data[name][lbl] for lbl in self.labels):
                 print(f"skipped -> {prefix}_{name}.png (no predictions on disk)")
                 continue

@@ -1,36 +1,115 @@
-"""Full CV analysis across runs (calls src.plotter).
+"""CV report: per-case Dice distributions and bad-performer table.
 
-Writes the per-case Dice distribution figure and the bad-performers table.
+By default this reads saved ``metrics`` files (fast, no volumes). Use
+``--images`` to compute the worst-slice column from prediction NIfTIs, or
+``--from-images`` to ignore metrics entirely.
 """
 
-import os
+import argparse
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
 from src.plotter import BadPerformersTable, CVData, DiceDistributionPlot
-
-GT_ROOT = "var/emidec_dataset/train"
-SPLITS = "var/nnUNet_validation/splits_final.json"
-RUNS = [
-    ("plain", "var/nnUNet_validation_pp"),
-    ("resenc", "var/nnUNet_validation_500resenc_pp"),
-    ("regions", "var/nnUNet_validation_501_pp"),
-    ("2.5d", "var/nnUNet_validation_502_pp"),
-    ("over", "var/nnUNet_validation_500over_pp"),
-    ("polar", "var/polar_preds"),  # rsync from Fir; missing files degrade gracefully
-]
-FIGURE_OUT = "var/results/dice_distributions.png"
-TABLE_OUT = "var/results/bad_performers.md"
+from src.results import ResultsTable
+from src.runs import RunStore
 
 
-def main():
-    cv = CVData(GT_ROOT, SPLITS, RUNS)
-    plot = DiceDistributionPlot(cv)
-    plot.save(FIGURE_OUT)
-    plot.save_by_run("var/results", prefix="dice")
-    BadPerformersTable(cv).save(TABLE_OUT)
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="CV plots and tables")
+    parser.add_argument("--runs", nargs="*", default=None,
+                        help="run ids (default: every discovered run)")
+    parser.add_argument("--root", action="append", default=None)
+    parser.add_argument("--splits", default=DEFAULT_SPLITS_PATH)
+    parser.add_argument("--gt-root", default=DEFAULT_GT_ROOT)
+    parser.add_argument("--out-dir", default="var/results")
+    parser.add_argument("--case-set", choices=["intersection", "union"],
+                        default="intersection")
+    parser.add_argument("--images", action="store_true",
+                        help="load prediction volumes for the worst-slice column")
+    parser.add_argument("--from-images", action="store_true",
+                        help="compute Dice from NIfTIs instead of saved metrics")
+    parser.add_argument("--no-bad-table", action="store_true")
+    return parser.parse_args(argv)
+
+
+def _common_cases(tables: dict[str, ResultsTable], mode: str) -> set[str]:
+    sets = [t.case_set() for t in tables.values() if t.case_set()]
+    if not sets:
+        return set()
+    return (set.intersection(*sets) if mode == "intersection"
+            else set.union(*sets))
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    store = RunStore(roots=args.root or None, splits_path=args.splits)
+    runs = store.select(args.runs) if args.runs else store.discover()
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    tables: dict[str, ResultsTable] = {}
+    used_metrics = False
+    if not args.from_images:
+        for run in runs:
+            table = run.load_metrics()
+            if table is not None:
+                tables[run.run_id] = table
+            else:
+                print(f"warning: {run.run_id} has no metrics; skipped",
+                      file=sys.stderr)
+    run_names = {run.run_id: run.name for run in runs}
+
+    if tables:
+        used_metrics = True
+        common = _common_cases(tables, args.case_set)
+        if args.case_set == "intersection":
+            dropped = {name: len(t.case_set() - common) for name, t in tables.items()}
+            dropped = {k: v for k, v in dropped.items() if v}
+            if dropped:
+                print(f"using {len(common)} shared cases; excluded: " + ", ".join(
+                    f"{k}:{v}" for k, v in dropped.items()))
+            tables = {name: t.where(lambda r: r["case_id"] in common)
+                      for name, t in tables.items()}
+        display = {run_names.get(name, name): table for name, table in tables.items()}
+        plot = DiceDistributionPlot(_EmptyCV(list(display)))
+        plot.load_results(display)
+    else:
+        selected = [r for r in runs if r.pred_dir is not None]
+        if not selected:
+            raise SystemExit("no saved metrics and no prediction directories found")
+        pairs = [(run_names.get(r.run_id, r.run_id), str(r.pred_dir)) for r in selected]
+        cv = CVData(args.gt_root, args.splits, pairs)
+        plot = DiceDistributionPlot(cv)
+        display = {name: None for name, _ in pairs}
+
+    plot.save(str(out_dir / "dice_distributions.png"))
+    plot.save_by_run(str(out_dir), prefix="dice")
+
+    if not args.no_bad_table:
+        if args.images or args.from_images or not used_metrics:
+            selected = [r for r in runs if r.pred_dir is not None]
+            pairs = [(run_names.get(r.run_id, r.run_id), str(r.pred_dir))
+                     for r in selected]
+            if not pairs:
+                raise SystemExit("--images requires prediction directories")
+            cv = CVData(args.gt_root, args.splits, pairs)
+            table = BadPerformersTable(cv, use_images=True)
+        else:
+            table = BadPerformersTable(None, use_images=False)
+            table.load_results(tables)
+        table.save(str(out_dir / "bad_performers.md"))
+    return 0
+
+
+class _EmptyCV:
+    """Minimal stand-in when plots are filled from saved metrics."""
+
+    def __init__(self, names):
+        self.run_names = names
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

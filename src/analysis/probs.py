@@ -5,7 +5,6 @@ The spatial transpose below was verified against the exported .nii.gz labels
 (argmax match = 1.0), so ``load`` returns (C, X, Y, Z) aligned with the GT.
 """
 
-import json
 from pathlib import Path
 
 import nibabel as nib
@@ -16,8 +15,9 @@ from src.config import (
     LABEL_CAVITY,
     LABEL_MYOCARDIUM,
     LABEL_SCAR,
-    nnunet_id_to_case_id,
 )
+from src.datautils.predictions import CVPredictionIndex
+from src.datautils.splits import CVSplits
 
 NPZ_TO_XYZ = (0, 3, 2, 1)  # (C, Z, Y, X) -> (C, X, Y, Z)
 DEFAULT_THRESHOLDS = (0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
@@ -27,18 +27,14 @@ class ProbIndex:
     """case_id -> out-of-fold .npz path (<prob_dir>/fold_k/validation/<nid>.npz)."""
 
     def __init__(self, prob_dir: str, splits_path: str = DEFAULT_SPLITS_PATH):
-        with open(splits_path) as f:
-            splits = json.load(f)
-        self.paths: dict[str, Path] = {}
-        for fold, split in enumerate(splits):
-            for nid in split["val"]:
-                self.paths[nnunet_id_to_case_id(nid)] = (
-                    Path(prob_dir) / f"fold_{fold}" / "validation" / f"{nid}.npz"
-                )
+        self.index = CVPredictionIndex(
+            prob_dir, CVSplits.load(splits_path), suffix=".npz")
+        self.paths: dict[str, Path] = {
+            cid: ref.path for cid, ref in self.index.items().items()}
 
     def available(self) -> list[str]:
         """Case ids whose .npz exists (the run may be partial)."""
-        return sorted(c for c, p in self.paths.items() if p.exists())
+        return self.index.available()
 
     def load(self, case_id: str) -> np.ndarray:
         """Return (C, X, Y, Z) float32 probabilities aligned with the GT."""

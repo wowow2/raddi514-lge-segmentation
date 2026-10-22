@@ -1,6 +1,8 @@
 """post-processing for EMIDEC predictions.
 """
 
+from pathlib import Path
+
 import numpy as np
 from scipy import ndimage as ndi
 
@@ -71,7 +73,38 @@ class PostProcessor:
         return self.enforce_containment(
             self.gate_small_mvo(self.grow_scar(self.gate_small_scar(pred))))
 
+    def ops(self) -> list[dict]:
+        """Ordered operations with their parameters (for run metadata)."""
+        return [
+            {"name": "gate_small_scar",
+             "params": {"min_voxels": self.min_scar_voxels}},
+            {"name": "grow_scar", "params": {"px": self.scar_grow_px}},
+            {"name": "gate_small_mvo",
+             "params": {"min_voxels": self.min_mvo_voxels}},
+            {"name": "enforce_containment", "params": {}},
+        ]
+
     def __repr__(self) -> str:
         return (f"{type(self).__name__}(min_scar_voxels={self.min_scar_voxels}, "
                 f"min_mvo_voxels={self.min_mvo_voxels}, "
                 f"scar_grow_px={self.scar_grow_px})")
+
+
+def apply_to_dir(src_dir: str | Path, dst_dir: str | Path,
+                 post: PostProcessor) -> list[Path]:
+    """Apply post-processing to every ``fold_*/validation/*.nii.gz`` tree.
+
+    Preserves the directory layout and the source header/affine.
+    """
+    import nibabel as nib
+
+    written: list[Path] = []
+    for fold in sorted(Path(src_dir).glob("fold_*")):
+        for src in sorted((fold / "validation").glob("*.nii.gz")):
+            dst = Path(dst_dir) / fold.name / "validation" / src.name
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            img = nib.load(str(src))
+            cleaned = post(np.asanyarray(img.dataobj).astype(np.uint8))
+            nib.save(nib.Nifti1Image(cleaned, img.affine, img.header), str(dst))
+            written.append(dst)
+    return written

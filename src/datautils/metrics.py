@@ -37,6 +37,24 @@ class SegmentationMetrics:
             scores[lbl] = float(1.0 - dice_dissimilarity(p.ravel(), g.ravel()))
         return scores
 
+    def confusion(self, pred: np.ndarray, gt: np.ndarray,
+                  n_labels: int = 5) -> np.ndarray:
+        """Confusion matrix ``C[gt_label, pred_label]`` over ``n_labels`` labels.
+
+        One matrix per case replaces separate TP/FP/FN counters: they are
+        projections of it, and it also shows *where* errors went.
+        """
+        gt = np.asarray(gt).ravel()
+        pred = np.asarray(pred).ravel()
+        if gt.shape != pred.shape:
+            raise ValueError(f"pred/gt size mismatch: {pred.shape} vs {gt.shape}")
+        if gt.size and (gt.min() < 0 or gt.max() >= n_labels):
+            raise ValueError(f"gt labels outside [0, {n_labels})")
+        if pred.size and (pred.min() < 0 or pred.max() >= n_labels):
+            raise ValueError(f"pred labels outside [0, {n_labels})")
+        idx = gt.astype(np.int64) * n_labels + pred.astype(np.int64)
+        return np.bincount(idx, minlength=n_labels ** 2).reshape(n_labels, n_labels)
+
     def hd95(self, pred: np.ndarray, gt: np.ndarray,
              spacing: tuple[float, ...]) -> dict[int, float]:
         scores = {}

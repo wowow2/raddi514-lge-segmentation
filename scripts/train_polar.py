@@ -1,6 +1,8 @@
 """CLI entry point to train Polar nnU-Net across cross-validation folds."""
 
 import argparse
+import importlib
+import json
 import sys
 import time
 from pathlib import Path
@@ -43,7 +45,27 @@ def parse_args():
     parser.add_argument("--splits", default=DEFAULT_SPLITS_PATH, help="Path to splits_final.json")
     parser.add_argument("--gt-root", default=DEFAULT_GT_ROOT, help="Path to emidec_dataset/train")
     parser.add_argument("--num-workers", type=int, default=2, help="DataLoader workers (default: 2)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume from checkpoint_last.pt in each fold directory")
+    parser.add_argument("--run-id", default=None, help="Run id stored in run.json")
+    parser.add_argument("--tag", action="append", default=[], help="Run tag (repeatable)")
+    parser.add_argument("--description", default=None)
+    parser.add_argument("--model-name", default="polar_unet",
+                        help="Model name recorded in metadata (default: polar_unet)")
+    parser.add_argument("--model-params", default=None,
+                        help="JSON object merged into the model constructor params")
+    parser.add_argument("--model-class", default=None,
+                        help="optional 'package.module:ClassName' to construct instead "
+                             "of PolarUNet (the dataset still supplies one input channel)")
     return parser.parse_args()
+
+
+def _load_class(spec: str):
+    module_name, _, class_name = spec.partition(":")
+    if not module_name or not class_name:
+        raise SystemExit(f"--model-class must look like 'pkg.module:Class', got {spec!r}")
+    return getattr(importlib.import_module(module_name), class_name)
 
 
 def main():
@@ -53,11 +75,17 @@ def main():
     print("=" * 70)
     print(f"POLAR nnU-NET TRAINING | Folds: {list(folds)} | Epochs: {args.epochs} | Batch: {args.batch_size}")
     print(f"Use Radius Channel: {args.use_radius} | Deep Supervision: {not args.no_deep_supervision}")
+    print(f"Seed: {args.seed} | Resume: {args.resume} | Run id: {args.run_id or args.save_dir}")
     print("=" * 70)
+
+    model_params = json.loads(args.model_params) if args.model_params else {}
+    model_cls = _load_class(args.model_class) if args.model_class else None
+    model_name = model_cls.__name__ if model_cls is not None else args.model_name
 
     t_start = time.time()
     for f in folds:
         print(f"\n>>> Launching Training for Fold {f}...")
+        fold_model = model_cls(**model_params) if model_cls is not None else None
         trainer = PolarTrainer(
             fold=f,
             epochs=args.epochs,
@@ -72,6 +100,14 @@ def main():
             splits_path=args.splits,
             gt_root=args.gt_root,
             num_workers=args.num_workers,
+            seed=args.seed,
+            resume=args.resume,
+            run_id=args.run_id,
+            tags=args.tag,
+            description=args.description,
+            model_name=model_name,
+            model_params=model_params or None,
+            model=fold_model,
         )
         best_ckpt = trainer.fit()
         print(f">>> Fold {f} complete! Best model: {best_ckpt}")

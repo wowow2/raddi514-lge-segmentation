@@ -29,8 +29,20 @@ def merge_polar_with_nnunet(
     covered_z: np.ndarray,        # (Z,) bool, slices the polar model ran on
     dilation: int = 2,
     disc_thresh: float = 0.5,
+    mode: str = "erase",
+    prob_thresh: float | None = None,
 ) -> np.ndarray:
-    """Paint-over rule. Returns merged labels before the scar gate."""
+    """Paint-over rule. Returns merged labels before the post-processor.
+
+    Args:
+        mode: ``"erase"`` (original behaviour) replaces stage-1 scar/MVO with
+            myocardium on covered slices before painting; ``"additive"`` keeps
+            stage-1 labels and only adds polar scar/MVO.
+        prob_thresh: minimum polar confidence for a scar/MVO voxel to be
+            painted (``None`` = plain argmax).
+    """
+    if mode not in ("erase", "additive"):
+        raise ValueError(f"mode must be 'erase' or 'additive', got {mode!r}")
     merged = nnunet_pred.copy()
     if not covered_z.any():
         return merged
@@ -38,9 +50,9 @@ def merge_polar_with_nnunet(
     # voxels inside the disc
     in_disc = cart_probs.sum(0) >= disc_thresh
 
-    # covered discs
-    stage1_sm = np.isin(nnunet_pred, (SCAR, MVO)) & covered_z[None, None, :]
-    merged[stage1_sm] = MYO
+    if mode == "erase":
+        stage1_sm = np.isin(nnunet_pred, (SCAR, MVO)) & covered_z[None, None, :]
+        merged[stage1_sm] = MYO
 
     # allowed region
     region = np.isin(nnunet_pred, (MYO, SCAR, MVO, CAV))
@@ -51,6 +63,9 @@ def merge_polar_with_nnunet(
     polar_arg = cart_probs.argmax(0)
     paint = (np.isin(polar_arg, (SCAR, MVO)) & region & in_disc
              & covered_z[None, None, :])
+    if prob_thresh is not None:
+        confidence = cart_probs[SCAR:MVO + 1].max(axis=0)
+        paint &= confidence >= prob_thresh
     merged[paint] = polar_arg[paint].astype(np.uint8)
     return merged
 
@@ -58,11 +73,17 @@ class PolarMerger:
     """Run a trained PolarUNet on one case and merge into nnU-Net's labels."""
 
     def __init__(self, model, dilation: int = 2, gate: PostProcessor | None = None,
-                 device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+                 device: str = "cuda" if torch.cuda.is_available() else "cpu",
+                 mode: str = "erase", prob_thresh: float | None = None,
+                 R: int = 64, Theta: int = 256):
         self.model = model.to(device).eval()
         self.dilation = dilation
         self.gate = gate if gate is not None else PostProcessor()
         self.device = device
+        self.mode = mode
+        self.prob_thresh = prob_thresh
+        self.R = R
+        self.Theta = Theta
 
     @torch.no_grad()
     def polar_probs(self, raw_vol, case_anchors, transform) -> dict[int, torch.Tensor]:
@@ -81,12 +102,14 @@ class PolarMerger:
 
     def __call__(self, raw_vol, nnunet_pred, case_anchors, apply_gate: bool = True):
         H, W, Z = raw_vol.shape
-        transform = PolarTransform(case_anchors.anchors)
+        transform = PolarTransform(case_anchors.anchors, self.R, self.Theta)
         pp = self.polar_probs(raw_vol, case_anchors, transform)
         covered = np.zeros(Z, bool)
         covered[list(pp)] = True
         cart = polar_probs_to_cartesian(pp, transform, H, W, Z)
-        merged = merge_polar_with_nnunet(nnunet_pred, cart, covered, self.dilation)
+        merged = merge_polar_with_nnunet(
+            nnunet_pred, cart, covered, self.dilation,
+            mode=self.mode, prob_thresh=self.prob_thresh)
         return self.gate(merged) if apply_gate else merged
 
 

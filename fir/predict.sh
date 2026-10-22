@@ -81,7 +81,7 @@ if [[ "$LOCAL" -eq 1 ]]; then
         ${TR_FLAG} -chk checkpoint_best.pth -device cpu --continue_prediction --disable_progress_bar \
         -num_parts "$PARTS" -part_id "$p" &
     done
-    wait
+    for pid in $(jobs -p); do wait "$pid" || exit 1; done
   done
   echo "done. Pack with: ./predict.sh $DATASET --pack"
   exit 0
@@ -90,15 +90,17 @@ fi
 if [[ "$PACK" -eq 1 ]]; then
   n=$(find "$PREDROOT" -name '*.nii.gz' 2>/dev/null | wc -l)
   echo "prediction files: $n (expect 500 = 100 cases x 5 folds)"
-  tar czf "$FIR_BASE/${NAME}_preds.tar.gz" -C "$PREDROOT" .
-  ls -lh "$FIR_BASE/${NAME}_preds.tar.gz"
-  echo "download with: scp fir:${FIR_BASE}/${NAME}_preds.tar.gz ."
+  TAG="${NAME}__${TR:-nnUNetTrainer}__${PLAN}__${CONFIG}"
+  tar czf "$FIR_BASE/${TAG}_preds.tar.gz" -C "$PREDROOT" .
+  ls -lh "$FIR_BASE/${TAG}_preds.tar.gz"
+  echo "download with: scp fir:${FIR_BASE}/${TAG}_preds.tar.gz ."
   exit 0
 fi
 
 SBATCH_FILE="$(mktemp /tmp/predict_${DATASET}_XXXX.sh)"
 cat > "$SBATCH_FILE" <<EOF
 #!/bin/bash
+set -euo pipefail
 #SBATCH --account=def-punithak
 ${RES_LINES}
 #SBATCH --job-name=pred_${DATASET}
@@ -118,7 +120,7 @@ for f in 0 1 2 3 4; do
       ${TR_FLAG} -chk checkpoint_best.pth ${DEVICE_ARGS} --continue_prediction --disable_progress_bar \\
       -num_parts ${PARTS} -part_id \$p &
   done
-  wait
+  for pid in \$(jobs -p); do wait "\$pid" || exit 1; done
 done
 EOF
 

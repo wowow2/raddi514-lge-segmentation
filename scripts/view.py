@@ -30,46 +30,38 @@ def _ensure_interactive_backend() -> str:
 
 _backend = _ensure_interactive_backend()
 
-from src.config import case_id_to_nnunet_id
+from src.config import DEFAULT_GT_ROOT, repo_path
 from src.datautils.emidec_dataset import EMIDECDataset
+from src.runs import RunStore
 from src.viewer import DatasetViewer
 
+TEST_ROOT = str(repo_path("var/emidec_dataset/test"))
 SPLIT_DIRS = {
-    "train": ["var/emidec_dataset/train"],
-    "test": ["var/emidec_dataset/test"],
-    "all": ["var/emidec_dataset/train", "var/emidec_dataset/test"],
+    "train": [DEFAULT_GT_ROOT],
+    "test": [TEST_ROOT],
+    "all": [DEFAULT_GT_ROOT, TEST_ROOT],
 }
 
-# (overlay name, post-processed predictions dir) in cycle order.
-PRED_RUNS = [
-    ("plain", "var/nnUNet_validation_pp"),
-    ("resenc", "var/nnUNet_validation_500resenc_pp"),
-    ("regions", "var/nnUNet_validation_501_pp"),
-    ("2.5d", "var/nnUNet_validation_502_pp"),
-    ("over", "var/nnUNet_validation_500over_pp"),
-    ("polar", "var/polar_preds"),
-]
-SPLITS_PATH = "var/nnUNet_validation/splits_final.json"
-
-
-def build_pred_index(cases):
-    """{case_id: {run_name: pred path or None}}; missing dirs degrade to {}."""
-    import json
-
-    with open(SPLITS_PATH) as f:
-        folds = json.load(f)
-    fold_of = {nid: fi for fi, s in enumerate(folds) for nid in s["val"]}
-    runs = [(n, d) for n, d in PRED_RUNS if os.path.isdir(d)]
-    index = {}
+def build_pred_index(cases, run_ids=None):
+    """{case_id: {run_name: pred path or None}} from discovered runs."""
+    store = RunStore()
+    runs = store.select(run_ids) if run_ids else store.discover()
+    usable = []
+    for run in runs:
+        index = run.prediction_index()
+        if index is not None and len(index.available()):
+            usable.append((run.name, index))
+    pred_index = {}
     for case in cases:
-        nid = case_id_to_nnunet_id(case.case_id)
-        fi = fold_of.get(nid)
         entry = {}
-        for name, d in runs:
-            p = os.path.join(d, f"fold_{fi}", "validation", f"{nid}.nii.gz")
-            entry[name] = p if fi is not None and os.path.exists(p) else None
-        index[case.case_id] = entry
-    return [n for n, _ in runs], index
+        for name, index in usable:
+            if case.case_id in index:
+                path = index.path(case.case_id)
+                entry[name] = str(path) if path.exists() else None
+            else:
+                entry[name] = None
+        pred_index[case.case_id] = entry
+    return [name for name, _ in usable], pred_index
 
 
 def main():
@@ -82,10 +74,15 @@ def main():
         "--no-preds", action="store_true",
         help="browse without prediction overlays",
     )
+    parser.add_argument(
+        "--runs", nargs="*", default=None,
+        help="run ids to overlay (default: every discovered run with predictions)",
+    )
     args = parser.parse_args()
 
     dataset = EMIDECDataset(SPLIT_DIRS[args.split])
-    run_names, pred_index = ([], {}) if args.no_preds else build_pred_index(dataset.cases)
+    run_names, pred_index = (
+        ([], {}) if args.no_preds else build_pred_index(dataset.cases, args.runs))
     print(f"Loaded {len(dataset)} cases [{_backend}] ({args.split})"
           + (f" + preds {run_names}." if run_names else " (no preds).")
           + " Launching viewer...")
