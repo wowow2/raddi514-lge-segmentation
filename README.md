@@ -189,48 +189,7 @@ scar.summary("dice")
    `scripts/evaluate_polar.py --raw` is the one-shot variant: it predicts and
    scores ungated outputs in a single command. Without `--raw` it keeps the
    historical behaviour of reading pre-gated outputs. `--mode additive
-   --tau ...` reproduces the documented additive merge variant.
-
-## Adding a model
-
-Both routes below reach the same downstream pipeline (post-processing,
-scoring, and `runs.py` are all model-agnostic).
-
-**nnU-Net model.** Train on Fir with `fir/submit.sh` and pick the trainer with
-`--tr` (plain `nnUNetTrainer`, ResEnc variants, region-label trainers, ...).
-Record the choice at evaluation time with
-`scripts/evaluate_nnunet_cv.py --trainer ... --plans ... --config-name ...`.
-
-**Injected Python model.** The polar trainer is a generic harness: it accepts
-any model, datasets, and loss. The stage-2 polar U-Net is just one example.
-
-```python
-from src.polar.trainer import PolarTrainer
-
-trainer = PolarTrainer(
-    fold=0, save_dir="var/runs/my_model", run_id="my_model_f0",
-    model=MyModel(in_channels=1), train_ds=my_train_ds, val_ds=my_val_ds,
-    criterion=my_loss, model_name="my_model",
-    model_params={"in_channels": 1},
-    tags=["my_model"],
-)
-trainer.fit()
-```
-
-Either way, the manifest records `model.name` and `model.params` (explicit
-parameters for the injected path, trainer/plans/config for nnU-Net), so stored
-metadata never has to guess.
-
-The default `PolarDataset` emits one channel per slice. A multi-channel model
-needs its own dataset and preprocessing (or a `NeighborStacker`-based dataset),
-plus a matching prediction path; only model construction is generic today.
-From the CLI: `python scripts/train_polar.py --model-class mypkg.models:MyUNet
---model-params '{"in_channels": 1}'`.
-
-To plug into the rest of the pipeline, inference must write the
-`fold_<k>/validation/<EMIDEC_id>.nii.gz` layout (see `src/polar/predict.py`)
-and a `run.json`. Post-processing, scoring, the viewer, and `runs.py` then
-work unchanged.
+    --tau ...` reproduces the documented additive merge variant.
 
 ## Checks
 
