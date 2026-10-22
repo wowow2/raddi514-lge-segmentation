@@ -9,11 +9,12 @@ followed by anatomical post-processing. Evaluated with 5-fold cross-validation
 
 ## Layout
 
-- `src/datautils/` — EMIDEC loading, nnU-Net export, metrics, splits, post-processing
+- `src/datautils/` — EMIDEC loading, nnU-Net export, metrics, splits, size gating (+ optional scar growth)
+- `src/analysis/probs.py` — out-of-fold probability diagnostics
 - `src/polar/` — polar transform, model, training, and merge into nnU-Net predictions
 - `src/viewer/` — interactive case browser
 - `fir/` — SLURM scripts for training and prediction on the Fir cluster
-- `scripts/` — training, evaluation, and reporting entry points
+- `scripts/` — training, evaluation, reporting entry points, and the probability diagnostic (`analyze_probs.py`)
 
 See [`NOTES.md`](NOTES.md) for dataset details and results, and
 [`READINGS.md`](READINGS.md) for references.

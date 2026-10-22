@@ -23,9 +23,12 @@ def main():
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--min-scar-voxels", type=int, default=MIN_SCAR_VOXELS)
     parser.add_argument("--min-mvo-voxels", type=int, default=MIN_MVO_VOXELS)
+    parser.add_argument("--scar-grow-px", type=int, default=0,
+                        help="grow gated scar by N in-plane px into cavity/myo (0 = off)")
     args = parser.parse_args()
     post = PostProcessor(min_scar_voxels=args.min_scar_voxels,
-                         min_mvo_voxels=args.min_mvo_voxels)
+                         min_mvo_voxels=args.min_mvo_voxels,
+                         scar_grow_px=args.scar_grow_px)
     print(f"using {post}")
 
     n = 0
