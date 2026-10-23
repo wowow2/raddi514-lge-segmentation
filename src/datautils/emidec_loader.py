@@ -8,12 +8,14 @@ import unicodedata
 import nibabel as nib
 import numpy as np
 
-# Segmentation label ids in the ground-truth contours.
-LABEL_BACKGROUND = 0
-LABEL_CAVITY = 1
-LABEL_MYOCARDIUM = 2
-LABEL_SCAR = 3
-LABEL_MVO = 4
+from src.config import (
+    LABEL_BACKGROUND,
+    LABEL_CAVITY,
+    LABEL_MVO,
+    LABEL_MYOCARDIUM,
+    LABEL_SCAR,
+)
+
 N_LABELS = 5
 
 

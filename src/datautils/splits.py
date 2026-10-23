@@ -24,9 +24,6 @@ from src.config import (
     nnunet_id_to_case_id,
 )
 
-DEFAULT_SPLITS_FALLBACK = "splits/emidec_5fold.json"
-
-
 @dataclass
 class SplitValidation:
     """Result of validating a fold list."""
@@ -213,7 +210,7 @@ class StratifiedFolds:
     """
 
     def __init__(self, cases, n_folds: int = 5, seed: int = 42,
-                 path: str = DEFAULT_SPLITS_FALLBACK):
+                 path: str | None = None):
         self.cases = list(cases)
         self.n_folds = n_folds
         self.seed = seed
@@ -242,6 +239,8 @@ class StratifiedFolds:
     def save(self, path: str | None = None) -> str:
         """Persist folds to JSON. Returns the path written."""
         path = path or self.path
+        if path is None:
+            raise ValueError("StratifiedFolds has no output path; pass --path")
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w") as f:
             json.dump(self.folds if self.folds is not None else self.build(),
@@ -249,7 +248,7 @@ class StratifiedFolds:
         return path
 
     @classmethod
-    def load(cls, path: str = DEFAULT_SPLITS_FALLBACK) -> list[dict]:
+    def load(cls, path: str | None = None) -> list[dict]:
         """Load persisted folds from JSON."""
         with open(path) as f:
             return json.load(f)

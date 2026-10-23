@@ -4,7 +4,9 @@ import numpy as np
 from scipy.spatial.distance import dice as dice_dissimilarity
 from surface_distance import compute_robust_hausdorff, compute_surface_distances
 
-DEFAULT_LABELS = (1, 2, 3, 4)
+from src.config import EVAL_LABELS
+
+DEFAULT_LABELS = EVAL_LABELS
 
 
 class SegmentationMetrics:

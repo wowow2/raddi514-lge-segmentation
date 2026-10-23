@@ -17,9 +17,9 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
+from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, repo_path
 from src.datautils.splits import CVSplits
-from src.runs import RunManifest, provenance_now
+from src.runs import RunManifest, provenance_now, read_manifest, write_manifest
 from .dataset import PolarDataset
 from .loss import CompoundLoss
 from .model import PolarUNet
@@ -88,6 +88,10 @@ class PolarTrainer:
         self.device = torch.device(
             device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
+        save_dir = str(repo_path(save_dir))
+        pred_dir = str(repo_path(pred_dir))
+        splits_path = str(repo_path(splits_path))
+        gt_root = str(repo_path(gt_root))
         self.save_dir = Path(save_dir)
         self.fold_dir = self.save_dir / f"fold_{fold}"
         self.fold_dir.mkdir(parents=True, exist_ok=True)
@@ -186,11 +190,7 @@ class PolarTrainer:
     def _write_metadata(self, pred_dir: str, run_id: str | None,
                         tags, description: str | None) -> None:
         path = self.save_dir / "run.json"
-        existing = {}
-        if path.exists():
-            with open(path) as f:
-                existing = json.load(f)
-        manifest = RunManifest.from_dict(existing)
+        manifest = RunManifest.from_dict(read_manifest(path))
         manifest.run_id = run_id or manifest.run_id or self.save_dir.resolve().name
         manifest.stage = manifest.stage or "stage2"
         manifest.description = description or manifest.description
@@ -210,8 +210,7 @@ class PolarTrainer:
         manifest.provenance = provenance_now("scripts/train_polar.py")
         with open(self.fold_dir / "config.json", "w") as f:
             json.dump(self.config, f, indent=2)
-        with open(path, "w") as f:
-            json.dump(manifest.to_dict(), f, indent=2)
+        write_manifest(path, manifest)
 
     def _checkpoint_payload(self, epoch: int) -> dict:
         return {

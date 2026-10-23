@@ -53,6 +53,8 @@ DEFAULT_SPLITS_PATH: str = _env_path(
     "NNUNET_SPLITS_PATH", Path(DEFAULT_PRED_DIR) / "splits_final.json"
 )
 DEFAULT_OUT_PATH: str = _env_path("NNUNET_CV_OUT", "var/results/nnunet_2d_cv_metrics.json")
+DEFAULT_STAGE1_PRED_DIR: str = str(repo_path("var/nnUNet_validation_501_pp"))
+DEFAULT_POLAR_MODEL_DIR: str = str(repo_path("var/polar_models"))
 
 
 def nnunet_id_to_case_id(nnunet_id: str) -> str:

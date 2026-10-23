@@ -65,6 +65,25 @@ def _git(*args: str) -> str | None:
         return None
 
 
+def read_manifest(path: str | os.PathLike) -> dict[str, Any]:
+    """Load a manifest, returning ``{}`` when the file does not exist."""
+    path = Path(path)
+    if not path.exists():
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def write_manifest(path: str | os.PathLike,
+                   manifest: "RunManifest | dict[str, Any]") -> None:
+    """Write a manifest with consistent formatting."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = manifest.to_dict() if isinstance(manifest, RunManifest) else manifest
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 def provenance_now(command: str | None = None) -> dict:
     """Code/package provenance; unavailable values are ``None`` (unknown)."""
     packages = {}
@@ -581,10 +600,8 @@ class RunStore:
     def register(self, run_id: str, **fields: Any) -> Run:
         """Write/merge an explicit manifest under ``var/runs/<run_id>``."""
         path = self.registry_dir / run_id / "run.json"
-        existing = None
-        if path.exists():
-            with open(path) as f:
-                existing = RunManifest.from_dict(json.load(f))
+        existing = (RunManifest.from_dict(read_manifest(path))
+                    if path.exists() else None)
         manifest = RunManifest.from_dict({"run_id": run_id, **fields})
         if existing is not None:
             conflicts = manifest.identity_conflicts(existing)
@@ -596,9 +613,7 @@ class RunStore:
                     f"Refusing to register {run_id}: identity conflicts with "
                     f"{path} ({detail})")
             manifest = manifest.merged_with(existing)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(manifest.to_dict(), f, indent=2)
+        write_manifest(path, manifest)
         self._runs = None
         return Run(manifest, self, sources=[path])
 

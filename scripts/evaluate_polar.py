@@ -8,7 +8,6 @@ repeating inference.
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -16,13 +15,13 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
+from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, repo_path
 from src.datautils.emidec_dataset import EMIDECDataset
 from src.datautils.evaluator import DatasetEvaluator
 from src.datautils.postprocess import MIN_MVO_VOXELS, MIN_SCAR_VOXELS, PostProcessor
 from src.datautils.splits import CVSplits
 from src.polar.predict import predict_oof
-from src.runs import RunManifest, provenance_now
+from src.runs import RunManifest, provenance_now, read_manifest, write_manifest
 
 
 def parse_args(argv=None):
@@ -52,14 +51,6 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def _read_manifest(directory: Path) -> dict:
-    path = directory / "run.json"
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return {}
-
-
 def main(argv=None) -> int:
     args = parse_args(argv)
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -68,14 +59,18 @@ def main(argv=None) -> int:
         min_mvo_voxels=args.min_mvo_voxels,
         scar_grow_px=args.scar_grow_px)
 
-    dataset = EMIDECDataset(args.gt_root)
-    splits = CVSplits.load(args.splits)
+    gt_root = repo_path(args.gt_root)
+    splits_path = repo_path(args.splits)
+    stage1_dir = repo_path(args.stage1_dir)
+    out_path = repo_path(args.out)
+    dataset = EMIDECDataset(gt_root)
+    splits = CVSplits.load(splits_path)
     splits.validate(case_ids=dataset.case_ids).raise_if_invalid()
 
-    model_dir = Path(args.model_dir)
-    pred_out = Path(args.pred_out_dir)
+    model_dir = Path(repo_path(args.model_dir))
+    pred_out = Path(repo_path(args.pred_out_dir))
     run_id = args.run_id or pred_out.name
-    parent = _read_manifest(model_dir)
+    parent = read_manifest(model_dir / "run.json")
 
     print("=" * 70)
     print("POLAR CASCADE OUT-OF-FOLD EVALUATION")
@@ -91,8 +86,8 @@ def main(argv=None) -> int:
             case=dataset.get(case_id), pred=merged, metadata={"fold": fold})
 
     result = predict_oof(
-        model_dir=model_dir, pred_out_dir=pred_out, stage1_dir=args.stage1_dir,
-        splits=splits, gt_root=args.gt_root, dilation=args.dilation,
+        model_dir=model_dir, pred_out_dir=pred_out, stage1_dir=stage1_dir,
+        splits=splits, gt_root=gt_root, dilation=args.dilation,
         mode=args.mode, prob_thresh=args.tau, gate=gate, device=device,
         on_case=on_case)
 
@@ -105,15 +100,15 @@ def main(argv=None) -> int:
         tags=sorted(set(parent_manifest.tags) | set(args.tag)),
         stage="stage2",
         parent_run=args.parent_run or parent_manifest.run_id or model_dir.name,
-        source_run=Path(args.stage1_dir).name,
+        source_run=stage1_dir.name,
         model=config.get("model") or parent_manifest.model,
         data={
-            "gt_root": args.gt_root,
-            "splits_path": args.splits,
+            "gt_root": str(gt_root),
+            "splits_path": str(splits_path),
             "splits_sha256": splits.sha256,
             "n_folds": len(splits.folds),
             "n_cases": len(splits.case_ids()),
-            "stage1_predictions": str(Path(args.stage1_dir).resolve()),
+            "stage1_predictions": str(Path(stage1_dir).resolve()),
             "R": result["R"], "Theta": result["Theta"],
         },
         training=parent_manifest.training,
@@ -128,23 +123,22 @@ def main(argv=None) -> int:
                      "scar_grow_px": (gate.scar_grow_px if gate else None)},
         paths={"predictions": str(pred_out.resolve()),
                "checkpoints": str(model_dir.resolve()),
-               "metrics": str(Path(args.out).resolve())},
+               "metrics": str(Path(out_path).resolve())},
         status={"expected_outputs": "oof",
                 "prediction": result["prediction"]},
         provenance=provenance_now("scripts/evaluate_polar.py"),
     )
     report = evaluator.aggregate(run_id=run_id, manifest=manifest.to_dict())
-    report.save_json(args.out)
+    report.save_json(out_path)
 
     if not args.no_manifest:
-        with open(pred_out / "run.json", "w") as f:
-            json.dump(manifest.to_dict(), f, indent=2)
+        write_manifest(pred_out / "run.json", manifest)
 
     print("\n" + "=" * 50)
     print("FINAL 5-FOLD CROSS-VALIDATION RESULTS")
     print("=" * 50)
     print(report.to_markdown())
-    print(f"\nSaved metrics -> {args.out} ({report.overall['n_cases']} cases)")
+    print(f"\nSaved metrics -> {out_path} ({report.overall['n_cases']} cases)")
     return 0
 
 

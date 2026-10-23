@@ -11,7 +11,6 @@ Changing gates or scar growth then never requires another forward pass.
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -19,10 +18,10 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
+from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, repo_path
 from src.datautils.splits import CVSplits
 from src.polar.predict import predict_oof
-from src.runs import RunManifest, provenance_now
+from src.runs import RunManifest, provenance_now, read_manifest, write_manifest
 
 
 def parse_args(argv=None):
@@ -47,13 +46,17 @@ def parse_args(argv=None):
 def main(argv=None) -> int:
     args = parse_args(argv)
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    splits = CVSplits.load(args.splits)
-    out_dir = Path(args.out_dir)
+    gt_root = repo_path(args.gt_root)
+    splits_path = repo_path(args.splits)
+    stage1_dir = repo_path(args.stage1_dir)
+    model_dir = Path(repo_path(args.model_dir))
+    out_dir = Path(repo_path(args.out_dir))
+    splits = CVSplits.load(splits_path)
     run_id = args.run_id or out_dir.name
 
     result = predict_oof(
-        model_dir=args.model_dir, pred_out_dir=out_dir,
-        stage1_dir=args.stage1_dir, splits=splits, gt_root=args.gt_root,
+        model_dir=model_dir, pred_out_dir=out_dir,
+        stage1_dir=stage1_dir, splits=splits, gt_root=gt_root,
         dilation=args.dilation, mode=args.mode, prob_thresh=args.tau,
         gate=None, device=device)
     print(f"wrote {result['n_written']} merged predictions -> {out_dir}")
@@ -61,11 +64,7 @@ def main(argv=None) -> int:
     if args.no_manifest:
         return 0
 
-    parent_path = Path(args.model_dir) / "run.json"
-    parent = {}
-    if parent_path.exists():
-        with open(parent_path) as f:
-            parent = json.load(f)
+    parent = read_manifest(model_dir / "run.json")
     parent_manifest = RunManifest.from_dict(parent)
     config = result["config"]
     manifest = RunManifest(
@@ -73,16 +72,16 @@ def main(argv=None) -> int:
         description=args.description or parent_manifest.description,
         tags=sorted(set(parent_manifest.tags) | set(args.tag)),
         stage="stage2",
-        parent_run=args.parent_run or parent_manifest.run_id or Path(args.model_dir).name,
-        source_run=Path(args.stage1_dir).name,
+        parent_run=args.parent_run or parent_manifest.run_id or model_dir.name,
+        source_run=stage1_dir.name,
         model=config.get("model") or parent_manifest.model,
         data={
-            "gt_root": args.gt_root,
-            "splits_path": args.splits,
+            "gt_root": str(gt_root),
+            "splits_path": str(splits_path),
             "splits_sha256": splits.sha256,
             "n_folds": len(splits.folds),
             "n_cases": len(splits.case_ids()),
-            "stage1_predictions": str(Path(args.stage1_dir).resolve()),
+            "stage1_predictions": str(Path(stage1_dir).resolve()),
             "R": result["R"], "Theta": result["Theta"],
         },
         training=parent_manifest.training,
@@ -93,13 +92,12 @@ def main(argv=None) -> int:
                "prob_thresh": args.tau},
         postprocess={"ops": []},
         paths={"predictions": str(out_dir.resolve()),
-               "checkpoints": str(Path(args.model_dir).resolve())},
+               "checkpoints": str(model_dir.resolve())},
         status={"expected_outputs": "oof",
                 "prediction": result["prediction"]},
         provenance=provenance_now("scripts/predict_polar.py"),
     )
-    with open(out_dir / "run.json", "w") as f:
-        json.dump(manifest.to_dict(), f, indent=2)
+    write_manifest(out_dir / "run.json", manifest)
     print(f"wrote manifest -> {out_dir / 'run.json'}")
     return 0
 

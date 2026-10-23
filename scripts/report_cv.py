@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
+from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, repo_path
 from src.plotter import BadPerformersTable, CVData, DiceDistributionPlot
 from src.results import ResultsTable
 from src.runs import RunStore
@@ -45,9 +45,11 @@ def _common_cases(tables: dict[str, ResultsTable], mode: str) -> set[str]:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
-    store = RunStore(roots=args.root or None, splits_path=args.splits)
+    splits_path = repo_path(args.splits)
+    gt_root = repo_path(args.gt_root)
+    store = RunStore(roots=args.root or None, splits_path=splits_path)
     runs = store.select(args.runs) if args.runs else store.discover()
-    out_dir = Path(args.out_dir)
+    out_dir = Path(repo_path(args.out_dir))
     out_dir.mkdir(parents=True, exist_ok=True)
 
     tables: dict[str, ResultsTable] = {}
@@ -81,7 +83,7 @@ def main(argv=None) -> int:
         if not selected:
             raise SystemExit("no saved metrics and no prediction directories found")
         pairs = [(run_names.get(r.run_id, r.run_id), str(r.pred_dir)) for r in selected]
-        cv = CVData(args.gt_root, args.splits, pairs)
+        cv = CVData(gt_root, splits_path, pairs)
         plot = DiceDistributionPlot(cv)
         display = {name: None for name, _ in pairs}
 
@@ -95,7 +97,7 @@ def main(argv=None) -> int:
                      for r in selected]
             if not pairs:
                 raise SystemExit("--images requires prediction directories")
-            cv = CVData(args.gt_root, args.splits, pairs)
+            cv = CVData(gt_root, splits_path, pairs)
             table = BadPerformersTable(cv, use_images=True)
         else:
             table = BadPerformersTable(None, use_images=False)

@@ -14,7 +14,7 @@ import nibabel as nib
 import numpy as np
 import torch
 
-from src.config import nnunet_id_to_case_id
+from src.config import nnunet_id_to_case_id, repo_path
 from src.datautils.emidec_dataset import EMIDECDataset
 from src.datautils.postprocess import PostProcessor
 from src.datautils.predictions import CVPredictionIndex
@@ -41,8 +41,10 @@ def predict_oof(
     on_case: CaseCallback | None = None,
 ) -> dict:
     """Run every fold's best checkpoint on that fold's validation cases."""
-    model_dir = Path(model_dir)
-    pred_out = Path(pred_out_dir)
+    model_dir = Path(repo_path(model_dir))
+    pred_out = Path(repo_path(pred_out_dir))
+    stage1_dir = repo_path(stage1_dir)
+    gt_root = repo_path(gt_root)
     dataset = EMIDECDataset(gt_root)
     splits.validate(case_ids=dataset.case_ids).raise_if_invalid()
     stage1 = CVPredictionIndex(stage1_dir, splits)

@@ -7,13 +7,12 @@ Reads ``<pred-dir>/fold_*/validation/*.nii.gz``, writes the cleaned tree to
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import DEFAULT_SPLITS_PATH
+from src.config import DEFAULT_SPLITS_PATH, repo_path
 from src.datautils.postprocess import (
     MIN_MVO_VOXELS,
     MIN_SCAR_VOXELS,
@@ -22,7 +21,7 @@ from src.datautils.postprocess import (
 )
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
-from src.runs import RunManifest, provenance_now
+from src.runs import RunManifest, provenance_now, read_manifest, write_manifest
 
 
 def parse_args(argv=None):
@@ -48,18 +47,11 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def _existing_manifest(pred_dir: Path) -> dict:
-    path = pred_dir / "run.json"
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return {}
-
-
 def main(argv=None) -> int:
     args = parse_args(argv)
-    pred_dir = Path(args.pred_dir)
-    out_dir = Path(args.out_dir)
+    pred_dir = Path(repo_path(args.pred_dir))
+    out_dir = Path(repo_path(args.out_dir))
+    splits_path = repo_path(args.splits)
     post = PostProcessor(min_scar_voxels=args.min_scar_voxels,
                          min_mvo_voxels=args.min_mvo_voxels,
                          scar_grow_px=args.scar_grow_px)
@@ -72,11 +64,11 @@ def main(argv=None) -> int:
         return 0
 
     run_id = args.run_id or out_dir.name
-    parent = _existing_manifest(pred_dir)
+    parent = read_manifest(pred_dir / "run.json")
     splits = None
     try:
-        splits = CVSplits.load(args.splits, validate=False)
-    except (OSError, ValueError, json.JSONDecodeError):
+        splits = CVSplits.load(splits_path, validate=False)
+    except (OSError, ValueError):
         pass
 
     manifest = RunManifest.from_dict(parent)
@@ -94,7 +86,7 @@ def main(argv=None) -> int:
     manifest.paths.update({"predictions": str(out_dir.resolve()), "metrics": None})
     if splits is not None:
         manifest.data.update({
-            "splits_path": args.splits,
+            "splits_path": str(splits_path),
             "splits_sha256": splits.sha256,
             "n_folds": len(splits.folds),
             "n_cases": len(splits.case_ids()),
@@ -107,9 +99,7 @@ def main(argv=None) -> int:
     manifest.provenance = provenance_now("scripts/apply_postprocess.py")
 
     path = out_dir / "run.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(manifest.to_dict(), f, indent=2)
+    write_manifest(path, manifest)
     print(f"wrote manifest -> {path}")
     return 0
 

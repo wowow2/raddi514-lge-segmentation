@@ -6,7 +6,6 @@ directory so the run is discoverable by ``scripts/runs.py``.
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -17,12 +16,13 @@ from src.config import (
     DEFAULT_OUT_PATH,
     DEFAULT_PRED_DIR,
     DEFAULT_SPLITS_PATH,
+    repo_path,
 )
 from src.datautils.emidec_dataset import EMIDECDataset
 from src.datautils.evaluator import DatasetEvaluator
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
-from src.runs import RunManifest, provenance_now
+from src.runs import RunManifest, provenance_now, read_manifest, write_manifest
 
 
 def parse_args(argv=None):
@@ -58,20 +58,15 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def _existing_manifest(pred_dir: Path) -> dict:
-    path = pred_dir / "run.json"
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return {}
-
-
 def main(argv=None) -> int:
     args = parse_args(argv)
-    pred_dir = Path(args.pred_dir)
+    pred_dir = Path(repo_path(args.pred_dir))
+    gt_root = repo_path(args.gt_root)
+    splits_path = repo_path(args.splits)
+    out_path = repo_path(args.out)
 
-    dataset = EMIDECDataset(args.gt_root)
-    splits = CVSplits.load(args.splits)
+    dataset = EMIDECDataset(gt_root)
+    splits = CVSplits.load(splits_path)
     validation = splits.validate(case_ids=dataset.case_ids)
     validation.raise_if_invalid()
     for warning in validation.warnings:
@@ -94,7 +89,7 @@ def main(argv=None) -> int:
             case=dataset.get(case_id), pred=index.load(case_id),
             metadata={"fold": fold})
 
-    parent = _existing_manifest(pred_dir)
+    parent = read_manifest(pred_dir / "run.json")
     run_id = args.run_id or parent.get("run_id") or pred_dir.name
     report = evaluator.aggregate(run_id=run_id)
     manifest = RunManifest.from_dict(parent)
@@ -115,36 +110,34 @@ def main(argv=None) -> int:
     if args.channels is not None:
         manifest.data["channels"] = args.channels
     manifest.data.update({
-        "gt_root": args.gt_root,
-        "splits_path": args.splits,
+        "gt_root": str(gt_root),
+        "splits_path": str(splits_path),
         "splits_sha256": splits.sha256,
         "n_folds": len(splits.folds),
         "n_cases": len(splits.case_ids()),
     })
     manifest.paths.update({
         "predictions": str(pred_dir.resolve()),
-        "metrics": str(Path(args.out).resolve()),
+        "metrics": str(Path(out_path).resolve()),
     })
     if args.checkpoints:
-        manifest.paths["checkpoints"] = str(Path(args.checkpoints).resolve())
+        manifest.paths["checkpoints"] = str(Path(repo_path(args.checkpoints)).resolve())
     if args.checkpoint:
         manifest.inference["checkpoint"] = args.checkpoint
     if args.probabilities:
-        manifest.paths["probabilities"] = str(Path(args.probabilities).resolve())
+        manifest.paths["probabilities"] = str(Path(repo_path(args.probabilities)).resolve())
     manifest.status["prediction"] = index.summary()
     manifest.status["missing_cases"] = missing
     manifest.status["expected_outputs"] = "oof"
     manifest.provenance = provenance_now("scripts/evaluate_nnunet_cv.py")
     report.manifest = manifest.to_dict()
 
-    report.save_json(args.out)
+    report.save_json(out_path)
     if not args.no_manifest:
-        path = pred_dir / "run.json"
-        with open(path, "w") as f:
-            json.dump(manifest.to_dict(), f, indent=2)
+        write_manifest(pred_dir / "run.json", manifest)
 
     print("\n" + report.to_markdown())
-    print(f"\nSaved metrics -> {args.out} ({report.overall['n_cases']} cases)")
+    print(f"\nSaved metrics -> {out_path} ({report.overall['n_cases']} cases)")
     return 0
 
 

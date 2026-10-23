@@ -1,16 +1,20 @@
+import nibabel as nib
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
+from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, DEFAULT_STAGE1_PRED_DIR, repo_path
 from src.datautils.splits import CVSplits
 from src.datautils.emidec_dataset import EMIDECDataset
 from .anchors import AnchorIndex
 from .transforms import PolarTransform
 
 class PolarDataset(Dataset):
-    def __init__(self, gt_root: str = DEFAULT_GT_ROOT, pred_dir: str = "var/nnUNet_validation_501_pp", splits_path: str = DEFAULT_SPLITS_PATH,
+    def __init__(self, gt_root: str = DEFAULT_GT_ROOT, pred_dir: str = DEFAULT_STAGE1_PRED_DIR, splits_path: str = DEFAULT_SPLITS_PATH,
             fold: int = 0, split: str = "train",R: int = 64, Theta: int = 256):
+        gt_root = str(repo_path(gt_root))
+        pred_dir = str(repo_path(pred_dir))
+        splits_path = str(repo_path(splits_path))
         self.dataset = EMIDECDataset(gt_root)
         self.anchor_index = AnchorIndex(pred_dir=pred_dir, splits_path=splits_path)
         self.R = R
@@ -50,8 +54,7 @@ class PolarDataset(Dataset):
             )
             wall_per_slice = case_anchors.anchors.myo_container.any(axis=(0, 1))
             case = self.dataset.get(cid)
-            # Load lazily to get slice count
-            num_slices = case.load()[0].shape[2]
+            num_slices = nib.load(case.img_path).shape[2]
             for z in range(num_slices):
                 if z < len(wall_per_slice) and wall_per_slice[z]:
                     self.samples.append((cid, z))

@@ -48,11 +48,17 @@ cat > "$SBATCH_FILE" <<EOF
 #SBATCH --output=${OUT}
 #SBATCH --array=0-4
 
+set -euo pipefail
 source "${HERE}/env.sh"
 cd "\$FIR_BASE"
-mkdir -p logs "\$SLURM_TMPDIR/nn"
-cp -r "\$FIR_BASE/emidec_nnunet/nnUNet_preprocessed" "\$SLURM_TMPDIR/nn/"
-cp -r "\$FIR_BASE/emidec_nnunet/nnUNet_raw" "\$SLURM_TMPDIR/nn/"
+
+# Only the trained dataset is staged into \$SLURM_TMPDIR; the shared copies of
+# 500/501/502 (600+ MB) would otherwise be copied for every job.
+mkdir -p "\$SLURM_TMPDIR/nn/nnUNet_preprocessed" "\$SLURM_TMPDIR/nn/nnUNet_raw"
+cp -r "\$FIR_BASE/emidec_nnunet/nnUNet_preprocessed/${NAME}" \
+      "\$SLURM_TMPDIR/nn/nnUNet_preprocessed/"
+cp -r "\$FIR_BASE/emidec_nnunet/nnUNet_raw/${NAME}" \
+      "\$SLURM_TMPDIR/nn/nnUNet_raw/"
 export nnUNet_preprocessed="\$SLURM_TMPDIR/nn/nnUNet_preprocessed"
 export nnUNet_raw="\$SLURM_TMPDIR/nn/nnUNet_raw"
 

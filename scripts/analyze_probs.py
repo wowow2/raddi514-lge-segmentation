@@ -25,7 +25,7 @@ from src.analysis.probs import (
     predict_with_scar_threshold,
     scar_diagnostics,
 )
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, LABEL_SCAR
+from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, LABEL_SCAR, repo_path
 from src.datautils.emidec_dataset import EMIDECDataset
 from src.datautils.metrics import SegmentationMetrics
 from src.datautils.postprocess import PostProcessor
@@ -54,7 +54,7 @@ def fmt(x, nd=3):
 def main():
     args = parse_args()
     thresholds = tuple(args.thresholds)
-    dataset = EMIDECDataset(args.gt_root)
+    dataset = EMIDECDataset(repo_path(args.gt_root))
     index = ProbIndex(args.prob_dir, args.splits)
     post = PostProcessor()
     scar_dice = SegmentationMetrics((LABEL_SCAR,)).dice
@@ -126,10 +126,12 @@ def main():
 
     # ---- save --------------------------------------------------------------
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    with open(args.out, "w") as f:
+    out_path = repo_path(args.out)
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    with open(out_path, "w") as f:
         json.dump({"prob_dir": args.prob_dir, "thresholds": thresholds,
                    "summary": summary, "sweep": sweep, "per_case": diag}, f, indent=2)
-    print(f"\nSaved -> {args.out}")
+    print(f"\nSaved -> {out_path}")
 
 
 if __name__ == "__main__":

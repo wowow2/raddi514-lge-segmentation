@@ -14,6 +14,7 @@ from src.config import (
     DEFAULT_SPLITS_PATH,
     case_id_to_nnunet_id,
     nnunet_id_to_case_id,
+    repo_path,
 )
 from src.datautils.splits import CVSplits
 
@@ -46,7 +47,7 @@ class CVPredictionIndex:
                  allow_scan: bool = True,
                  splits_path: str | os.PathLike | None = None,
                  use_default_splits: bool = True):
-        self.pred_dir = Path(pred_dir)
+        self.pred_dir = Path(repo_path(pred_dir))
         self.suffix = suffix
         self.splits = (splits if splits is not None
                        else self._find_splits(splits_path, use_default_splits))
@@ -73,7 +74,7 @@ class CVPredictionIndex:
         for candidate in candidates:
             if candidate is None:
                 continue
-            candidate = Path(candidate)
+            candidate = Path(repo_path(candidate))
             if candidate.exists():
                 try:
                     return CVSplits.load(candidate)

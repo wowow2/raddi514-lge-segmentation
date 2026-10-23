@@ -15,6 +15,7 @@ from src.config import (
     LABEL_CAVITY,
     LABEL_MYOCARDIUM,
     LABEL_SCAR,
+    repo_path,
 )
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
@@ -27,6 +28,8 @@ class ProbIndex:
     """case_id -> out-of-fold .npz path (<prob_dir>/fold_k/validation/<nid>.npz)."""
 
     def __init__(self, prob_dir: str, splits_path: str = DEFAULT_SPLITS_PATH):
+        prob_dir = str(repo_path(prob_dir))
+        splits_path = str(repo_path(splits_path))
         self.index = CVPredictionIndex(
             prob_dir, CVSplits.load(splits_path), suffix=".npz")
         self.paths: dict[str, Path] = {

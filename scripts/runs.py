@@ -100,7 +100,10 @@ def cmd_validate(args) -> int:
                 f"{conflict['kept']!r}, other source has {conflict['other']!r} "
                 f"(sources: {', '.join(conflict.get('sources', []))})")
         if status["legacy"]:
-            problems.append("legacy run: model/data/training metadata unknown")
+            if run.manifest.get("provenance.reconstructed"):
+                problems.append("legacy run: reconstructed; training metadata unknown")
+            else:
+                problems.append("legacy run: model/data/training metadata unknown")
         print(f"[{run.run_id}]")
         if problems:
             failed = failed or any(not p.startswith("legacy run") for p in problems)

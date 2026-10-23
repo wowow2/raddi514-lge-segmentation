@@ -14,6 +14,7 @@ from src.config import (
     LABEL_MYOCARDIUM,
     LABEL_SCAR,
     nnunet_id_to_case_id,
+    repo_path,
 )
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
@@ -38,28 +39,25 @@ class CaseAnchors:
 
     def _compute_centers(self) -> np.ndarray:
         cavity = self.pred_vol == LABEL_CAVITY
-        counts = cavity.sum(axis=(0,1))
-        H, W, Z = self.pred_vol.shape
+        _, _, Z = self.pred_vol.shape
+        xc = np.full(Z, np.nan)
+        yc = np.full(Z, np.nan)
+        for z in range(Z):
+            ys, xs = np.nonzero(cavity[:, :, z])
+            if xs.size:
+                xc[z] = xs.mean()
+                yc[z] = ys.mean()
 
-        # Sum over x and y
-        sum_x = np.tensordot(cavity, np.arange(W), axes=([1], [0])).sum(axis=0)
-        sum_y = np.tensordot(cavity, np.arange(H), axes=([0], [0])).sum(axis=0)
-
-        with np.errstate(divide='ignore', invalid='ignore'):
-            xc = sum_x / counts
-            yc = sum_y / counts
-
-        # interpolate
         valid = ~np.isnan(xc)
         if not valid.any():
             raise ValueError(
                 f"{self.pred_path}: no predicted cavity voxels; cannot anchor "
                 "the polar transform")
         z_all = np.arange(Z)
-        xc_interp = np.interp(z_all, z_all[valid], xc[valid])
-        yc_interp = np.interp(z_all, z_all[valid], yc[valid])
-
-        return np.column_stack([xc_interp, yc_interp])
+        return np.column_stack([
+            np.interp(z_all, z_all[valid], xc[valid]),
+            np.interp(z_all, z_all[valid], yc[valid]),
+        ])
 
     def _compute_radii(self, centers: np.ndarray) -> np.ndarray:
         H, W, Z = self.pred_vol.shape
@@ -83,17 +81,19 @@ class CaseAnchors:
         rmax_interp = np.interp(z_all, z_all[valid], rmax[valid])
         return rmax_interp
 
-    def _get_myo_container(self) -> np.ndarray:
-        return np.isin(self.pred_vol, WALL_LABELS)
-
-    def _compute_anchors(self)-> AnchorData:
+    def _compute_anchors(self) -> AnchorData:
         centers = self._compute_centers()
         radii = self._compute_radii(centers)
-        myo_container = self._get_myo_container()
-        return AnchorData(centers=centers, radii=radii, myo_container=myo_container)
+        return AnchorData(
+            centers=centers,
+            radii=radii,
+            myo_container=np.isin(self.pred_vol, WALL_LABELS),
+        )
 
 class AnchorIndex:
     def __init__(self, pred_dir: str, splits_path: str = DEFAULT_SPLITS_PATH):
+        pred_dir = str(repo_path(pred_dir))
+        splits_path = str(repo_path(splits_path))
         self.splits = CVSplits.load(splits_path)
         self.index = CVPredictionIndex(pred_dir, self.splits)
         self.case_to_path: dict[str, Path] = {
