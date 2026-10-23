@@ -35,6 +35,8 @@ METRIC_KEYS = {"dice": "dice_defined", "hd95": "hd95_defined"}
 
 def is_evaluation_report(data: Mapping[str, Any]) -> bool:
     """True for metric files (v1 or v2), false for unrelated JSON such as diagnostics."""
+    if not isinstance(data, Mapping):
+        return False
     return isinstance(data.get("results"), list) or isinstance(data.get("per_case"), list)
 
 
