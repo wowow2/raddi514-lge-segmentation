@@ -12,7 +12,7 @@ distance.
 ## Setup
 
 Python 3.12, virtualenv at `.venv`. Main dependencies: `torch`, `nnunetv2`,
-`nibabel`, `surface_distance`, `scikit-learn`, `scipy`, `matplotlib`. Tests use
+`nibabel`, `surface_distance`, `scikit-learn`, `scipy`, `matplotlib`, `PyQt5`. Tests use
 only the standard library (`unittest`); `pytest` is not required.
 
 Data locations default to `var/` under the repository root and can be
@@ -37,7 +37,7 @@ behave the same no matter where they are launched from.
 - `src/analysis/probs.py`: out-of-fold probability diagnostics
 - `src/polar/`: polar transform, model, training, checkpoint helpers,
   prediction, and merge
-- `src/viewer/`: interactive case browser
+- `src/viewer/`: PyQt5 case explorer (Explore/Metrics/Compare)
 - `fir/`: SLURM scripts for training and prediction on the Fir cluster
 - `scripts/`: entry points and the `runs.py` query CLI
 - `tests/`: standard-library `unittest` coverage (no pytest required)
@@ -142,6 +142,43 @@ metrics = run.load_metrics()                      # ResultsTable, no volumes
 scar = metrics.filter(class_id=3, gt_present=True)
 scar.summary("dice")
 ```
+
+## Viewer
+
+`scripts/view.py` launches a PyQt5 explorer with three tabs:
+
+```bash
+python scripts/view.py                                 # all cases, every run
+python scripts/view.py --split train --runs nnUNet_validation_501_pp  # restrict runs
+python scripts/view.py --no-preds                      # images + GT only
+```
+
+- **Explore**: follow one case through slices or a whole-volume montage.
+  Overlays are GT, prediction, both (GT fill + prediction contour), a
+  TP/FP/FN error map, or a stage-1 probability heatmap; masks and contours
+  have independent styles. Display-only derived channels (local contrast,
+  LoG, local standard deviation, percentile windows) preview candidate model
+  inputs without exporting a dataset. The side panel shows clinical metadata,
+  GT and prediction volumes, per-class Dice/HD95/recall/precision, and the
+  GT-to-prediction breakdown for the focus class.
+- **Metrics**: per-class distributions and mean scores with 95% bootstrap
+  CIs for any set of runs, plus a scorecard and a failure-triage table.
+  Double-clicking a case opens it in Explore; *Review failures* loads every
+  case below the threshold as an Explore queue.
+- **Plots**: focus-class Dice vs case covariates (GT volume, Age, LVEF,
+  Troponin, NT-proBNP, Killip), per-run group boxplots, and a cumulative
+  Dice histogram.
+- **Compare**: two linked panes, each with its own run, for the same case and
+  slice (single or montage).
+
+Explore also previews the challenge gates: dashed outlines mark prediction
+components the locked postprocessing would remove (scar < 50 vox, MVO < 10,
+MVO without scar) and the side panel reports the post-gate Dice.
+
+The shortcut set is intentionally small: arrow keys move slice/case, Space
+cycles mask/contour/both, `Ctrl+F` searches, `Ctrl+S` exports the current tab,
+and Esc leaves the search box. Everything else is on screen; the Help dialog
+lists the bindings and controls.
 
 ## Workflow
 

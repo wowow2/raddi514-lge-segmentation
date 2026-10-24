@@ -21,10 +21,10 @@ class Theme:
     title_size: float = 12.0
     # Overlay classes: (name, rgba) for labels 1..4
     classes: tuple = (
-        ("Cavity", (0.25, 0.62, 1.00, 0.55)),
-        ("Myo", (0.20, 0.90, 0.35, 0.55)),
-        ("Scar", (1.00, 0.25, 0.25, 0.80)),
-        ("MVO", (1.00, 0.90, 0.10, 0.95)),
+        ("Cavity", (0.15, 0.45, 1.00, 0.55)),
+        ("Myo", (0.55, 0.95, 0.25, 0.55)),
+        ("Scar", (1.00, 0.27, 0.27, 0.80)),
+        ("MVO", (1.00, 0.88, 0.12, 0.95)),
     )
     # Filmstrip
     strip_current_edge: str = "#5bc8ff"
