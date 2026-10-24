@@ -165,9 +165,6 @@ python scripts/view.py --no-preds                      # images + GT only
   CIs for any set of runs, plus a scorecard and a failure-triage table.
   Double-clicking a case opens it in Explore; *Review failures* loads every
   case below the threshold as an Explore queue.
-- **Plots**: focus-class Dice vs case covariates (GT volume, Age, LVEF,
-  Troponin, NT-proBNP, Killip), per-run group boxplots, and a cumulative
-  Dice histogram.
 - **Compare**: two linked panes, each with its own run, for the same case and
   slice (single or montage).
 

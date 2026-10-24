@@ -24,7 +24,6 @@ from . import qt_theme
 from .compare_tab import CompareTab
 from .explore import ExploreTab
 from .metrics_tab import MetricsTab
-from .plots_tab import PlotsTab
 from .model import ViewerModel
 
 
@@ -43,17 +42,14 @@ class MainWindow(QMainWindow):
         self.explore = ExploreTab(model)
         self.metrics = MetricsTab(model)
         self.compare = CompareTab(model)
-        self.plots = PlotsTab(model)
         self.tabs.addTab(self.explore, "Explore")
         self.tabs.addTab(self.metrics, "Metrics")
-        self.tabs.addTab(self.plots, "Plots")
         self.tabs.addTab(self.compare, "Compare")
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self.tabs)
 
         self.explore.status.connect(self._show_status)
         self.metrics.status.connect(self._show_status)
-        self.plots.status.connect(self._show_status)
         self.metrics.queue_requested.connect(self._open_queue)
         self.compare.status.connect(self._show_status)
         self.metrics.case_requested.connect(self._open_case)
@@ -237,14 +233,6 @@ class MainWindow(QMainWindow):
             "<li>Bars show mean with a 95% bootstrap CI, dots are cases coloured "
             "by group.</li>"
             "<li>Double-click a failure-triage row to open that case.</li>"
-            "</ul>"
-            "<h3 style='margin:0 0 6px'>Plots</h3>"
-            "<ul style='margin-top:0'>"
-            "<li>Scatter the focus class Dice against case covariates (GT "
-            "volume, Age, LVEF, Troponin, NT-proBNP, Killip) with per-run "
-            "trend lines.</li>"
-            "<li>Group boxplots and a cumulative Dice histogram complete the "
-            "view.</li>"
             "</ul>"
             "<h3 style='margin:0 0 6px'>Compare</h3>"
             "<p style='margin:0 0 10px'>Two linked panes for the same case and "
