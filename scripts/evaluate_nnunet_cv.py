@@ -38,6 +38,7 @@ def parse_args(argv=None):
     parser.add_argument("--tag", action="append", default=[])
     parser.add_argument("--parent-run", default=None)
     parser.add_argument("--model", default=None, help="model name for the manifest")
+    parser.add_argument("--stage", choices=["stage1", "stage2"], default=None)
     parser.add_argument("--trainer", default=None, help="nnU-Net trainer class")
     parser.add_argument("--plans", default=None, help="nnU-Net plans identifier")
     parser.add_argument("--config-name", default=None,
@@ -98,7 +99,7 @@ def main(argv=None) -> int:
     manifest.display_name = args.display_name or manifest.display_name
     manifest.tags = sorted(set(manifest.tags) | set(args.tag))
     manifest.parent_run = args.parent_run or manifest.parent_run
-    manifest.stage = manifest.stage or "stage1"
+    manifest.stage = args.stage or manifest.stage or "stage1"
     if args.model:
         manifest.model["name"] = args.model
     for key, value in (("trainer", args.trainer), ("plans", args.plans),

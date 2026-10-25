@@ -282,8 +282,9 @@ class ViewerModel:
         return [r.run_id for r in self._runs if r.run_id in self._pred_indexes]
 
     def default_pred_run(self) -> str | None:
-        """A sensible initial run: the gated/oversampling baseline when present."""
+        """Prefer the best-checkpoint cascade when present."""
         preferred = (
+            "503_best_pp",
             "nnUNet_validation_500over_pp_grow1",
             "nnUNet_validation_pp_grow1",
             "nnUNet_validation_500resenc_pp_grow1",

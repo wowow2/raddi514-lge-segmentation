@@ -92,24 +92,29 @@
 ### ROI 3D cascade (Dataset503: LGE + 5 OOF probability channels, ResEnc-M 3d fullres)
 
 * **Export:** `scripts/export_cascade.py` builds square in-plane ROI crops from the largest 3D component of the stage-1 foreground (pad 16, min 64, size multiple of 16, Z untouched), 6 input channels = LGE + the Dataset500 probabilistic-oversampling out-of-fold softmax probabilities, full 5-class labels; each case bbox is recorded in `cascade_manifest.json`.
-* **Train:** nnU-Net ResEnc-M `3d_fullres`, 5 folds, ~23 h/fold on Fir H100. Internal validation (ungated, ROI-crop space): cavity 0.939, myo 0.833, scar 0.577, MVO 0.307; fold 3 is the weak scar fold (0.448).
-* **Evaluate:** `src/cascade/merge.py` pastes each fold validation prediction into a full-volume label map at the recorded bbox (`fir/evaluate.sh`); sorted under the same gates as the other runs.
+* **Train:** nnU-Net ResEnc-M `3d_fullres`, 5 folds, ~23 h/fold on Fir H100. Best checkpoints are selected by nnU-Net's training-time validation criterion, not by the final case-level metrics below.
+* **Evaluate:** explicitly predict each fold's validation cases using `checkpoint_best.pth`, paste ROI labels back into full-volume space, then apply the same scar/MVO gates. `fir/evaluate.sh` records the checkpoint in both raw and gated reports. New training jobs use `--val_best` for their automatic validation exports too.
+* **Current baseline:** `503_best_pp`. Scores below are gated best-checkpoint OOF results on 100 cases; HD95 excludes undefined empty-mask distances.
 
 | Class | Dice mean | Dice std | HD95 mean | HD95 std |
 |---|---|---|---|---|
-| Cavity | 0.939 | 0.018 | 2.40 | 0.91 |
-| Myo | 0.833 | 0.050 | 3.19 | 2.70 |
-| Scar (raw) | 0.710 | 0.246 | 12.87 | 11.90 |
-| Scar (gated) | 0.718 | 0.241 | 12.76 | 11.97 |
-| MVO (raw) | 0.700 | 0.387 | 15.45 | 10.07 |
-| MVO (gated) | 0.705 | 0.390 | 15.06 | 10.12 |
-| All (raw) | 0.796 | 0.251 | 6.27 | — |
-| **All (gated)** | **0.799** | **0.250** | **6.09** | — |
+| Cavity | 0.942 | 0.017 | 2.37 | 0.96 |
+| Myo | 0.841 | 0.049 | 3.03 | 2.57 |
+| Scar | 0.720 | 0.240 | 11.94 | 11.79 |
+| MVO | 0.711 | 0.387 | 15.79 | 9.13 |
+| **All** | **0.804** | **0.248** | **5.97** | — |
 
-![cascade per-case Dice](var/results/dice_cascade.png)
+Historical final-checkpoint results remain a separate comparison, not the current baseline:
 
-* **Why it wins:** scar 0.718 (gated) beats every stage-1 run (best 0.690) and MVO edges ahead too; HD95 drops from ~10.6 to 6.09. The OOF probability channels + ROI input carry the edge/low-signal information the stage-2 model needs.
-* **Gates barely bite** (scar raw→gated +0.008, all-class +0.003): the 3D model produces few normal-case specks, so the speck-driven gate story is largely a stage-1 property.
+| Checkpoint / run | Cavity Dice | Myo Dice | Scar Dice | MVO Dice | Overall Dice | Overall HD95 |
+|---|---|---|---|---|---|---|
+| Final (`503_3d_pp`) | 0.939 | 0.833 | 0.718 | 0.705 | 0.799 | 6.091 |
+| Best (`503_best_pp`) | 0.942 | 0.841 | 0.720 | 0.711 | 0.804 | 5.965 |
+
+* Best improves Dice in every class relative to final; MVO HD95 worsens (15.059 to 15.790 mm). These are point estimates on shared CV cases, not an independent test of checkpoint selection.
+* Against the gated oversampling stage-1 parent: scar 0.690 to 0.720, MVO 0.703 to 0.711, overall Dice 0.790 to 0.804. The flat ResEnc stage-1 run still has higher MVO Dice (0.721). Cropping, probability inputs, and 3D context changed together, so their individual contributions are not isolated.
+* Best-checkpoint GT-present Dice: scar 0.598 (67 cases), MVO 0.328 (40 cases); raw values 0.600 and 0.339. Gates reduce these GT-present means while rewarding correct absence in the all-case score.
+* The viewer's overall HD95 averages the four class means; the evaluator's overall pools defined case/class distances. Report which aggregation is used.
 
 ### Polar cascade (stage-2 strip U-Net on 501-regions preds, gated)
 

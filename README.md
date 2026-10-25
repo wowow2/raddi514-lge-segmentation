@@ -179,6 +179,20 @@ lists the bindings and controls.
 
 ## Workflow
 
+Use the best checkpoint throughout: `fir/submit.sh` passes `--val_best`, and
+both prediction scripts explicitly pass `-chk checkpoint_best.pth`. Polar
+prediction uses `checkpoint_best.pt`. Historical validation folders created
+without `--val_best` contain final-model predictions and must not be relabelled
+as best-checkpoint outputs.
+
+For Dataset503, the current baseline is **`503_best_pp`** (overall Dice 0.804).
+The viewer prefers this run when available. `503_3d_pp` is the historical final
+checkpoint comparison (0.799), retained separately. `fir/evaluate.sh 503`
+regenerates best-checkpoint OOF predictions in a separate directory, scores raw
+and gated outputs, and records `inference.checkpoint = "best"`. This runs CPU
+inference with an eight-hour allocation; existing evaluated local best outputs
+do not need to be regenerated just to update the viewer.
+
 1. Export to nnU-Net format and train on Fir (`scripts/export_nnunet.py`,
    `fir/submit.sh`). `submit.sh` keeps its own nnU-Net results; metadata for
    the prediction run is recorded at evaluation time.
@@ -199,7 +213,7 @@ lists the bindings and controls.
      --out var/results/501_pp.json --run-id 501_pp \
      --model nnunet --trainer nnUNetTrainer --plans nnUNetResEncUNetMPlans \
      --config-name 2d --label-scheme regions --channels 1 \
-     --checkpoints var/nnUNet_results/Dataset501_EMIDEC_Regions
+     --checkpoints var/nnUNet_results/Dataset501_EMIDEC_Regions --checkpoint best
    ```
 
 4. Stage 2, the polar model. Training writes per-fold `config.json`,

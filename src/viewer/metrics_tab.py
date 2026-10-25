@@ -171,6 +171,7 @@ class MetricsTab(QWidget):
     def _select_defaults(self) -> None:
         available = self.model.metric_run_ids()
         preferred = [
+            "503_best_pp",
             "nnUNet_validation_pp",
             "nnUNet_validation_500resenc_pp",
             "nnUNet_validation_500over_pp",
@@ -182,7 +183,9 @@ class MetricsTab(QWidget):
         for run_id in available:
             if len(chosen) >= 6:
                 break
-            if run_id not in chosen and not run_id.endswith("_grow1"):
+            historical_final = run_id == "503_3d_pp" and "503_best_pp" in available
+            if (run_id not in chosen and not run_id.endswith("_grow1")
+                    and not historical_final):
                 chosen.append(run_id)
         self.runs_list.blockSignals(True)
         for run_id in available:

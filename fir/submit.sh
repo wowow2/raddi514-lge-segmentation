@@ -62,8 +62,8 @@ cp -r "\$FIR_BASE/emidec_nnunet/nnUNet_raw/${NAME}" \
 export nnUNet_preprocessed="\$SLURM_TMPDIR/nn/nnUNet_preprocessed"
 export nnUNet_raw="\$SLURM_TMPDIR/nn/nnUNet_raw"
 
-# ${NAME} | ${PLAN} | ${CONFIG} ${TR_FLAG}
-nnUNetv2_train ${DATASET} ${CONFIG} \$SLURM_ARRAY_TASK_ID -p ${PLAN} ${TR_FLAG} ${CONTINUE_FLAG}
+# Validate the selected best checkpoint, not the final training weights.
+nnUNetv2_train ${DATASET} ${CONFIG} \$SLURM_ARRAY_TASK_ID -p ${PLAN} ${TR_FLAG} ${CONTINUE_FLAG} --val_best
 EOF
 
 mkdir -p logs
