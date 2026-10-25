@@ -7,7 +7,7 @@ Examples::
 
     python scripts/export_cascade.py --limit 5 --out /tmp/cascade_smoke
     python scripts/export_cascade.py --overwrite
-    python scripts/export_cascade.py --no-probs --task-name Dataset504_EMIDEC_ROI
+    python scripts/export_cascade.py --no-probs --task-name Dataset505_EMIDEC_ROI
 """
 
 import argparse
