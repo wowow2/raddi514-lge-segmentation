@@ -214,7 +214,7 @@ lists the bindings and controls.
 
    python scripts/apply_postprocess.py --pred-dir var/polar_preds_raw \
      --out-dir var/polar_preds_pp --run-id polar_add_pp \
-     --parent-run polar_add_raw --scar-grow-px 0
+      --parent-run polar_add_raw
 
    python scripts/evaluate_nnunet_cv.py --pred-dir var/polar_preds_pp \
      --out var/results/polar_add_pp.json --run-id polar_add_pp

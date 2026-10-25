@@ -40,3 +40,4 @@ __pycache__/
 !var/results/dice_regions.png
 !var/results/dice_2.5d.png
 !var/results/dice_distributions.png
+!var/results/dice_cascade.png

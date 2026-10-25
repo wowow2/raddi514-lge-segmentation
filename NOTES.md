@@ -89,6 +89,28 @@
 
 ![oversampling per-case Dice](var/results/dice_over.png)
 
+### ROI 3D cascade (Dataset503: LGE + 5 OOF probability channels, ResEnc-M 3d fullres)
+
+* **Export:** `scripts/export_cascade.py` builds square in-plane ROI crops from the largest 3D component of the stage-1 foreground (pad 16, min 64, size multiple of 16, Z untouched), 6 input channels = LGE + the Dataset500 probabilistic-oversampling out-of-fold softmax probabilities, full 5-class labels; each case bbox is recorded in `cascade_manifest.json`.
+* **Train:** nnU-Net ResEnc-M `3d_fullres`, 5 folds, ~23 h/fold on Fir H100. Internal validation (ungated, ROI-crop space): cavity 0.939, myo 0.833, scar 0.577, MVO 0.307; fold 3 is the weak scar fold (0.448).
+* **Evaluate:** `src/cascade/merge.py` pastes each fold validation prediction into a full-volume label map at the recorded bbox (`fir/evaluate.sh`); sorted under the same gates as the other runs.
+
+| Class | Dice mean | Dice std | HD95 mean | HD95 std |
+|---|---|---|---|---|
+| Cavity | 0.939 | 0.018 | 2.40 | 0.91 |
+| Myo | 0.833 | 0.050 | 3.19 | 2.70 |
+| Scar (raw) | 0.710 | 0.246 | 12.87 | 11.90 |
+| Scar (gated) | 0.718 | 0.241 | 12.76 | 11.97 |
+| MVO (raw) | 0.700 | 0.387 | 15.45 | 10.07 |
+| MVO (gated) | 0.705 | 0.390 | 15.06 | 10.12 |
+| All (raw) | 0.796 | 0.251 | 6.27 | — |
+| **All (gated)** | **0.799** | **0.250** | **6.09** | — |
+
+![cascade per-case Dice](var/results/dice_cascade.png)
+
+* **Why it wins:** scar 0.718 (gated) beats every stage-1 run (best 0.690) and MVO edges ahead too; HD95 drops from ~10.6 to 6.09. The OOF probability channels + ROI input carry the edge/low-signal information the stage-2 model needs.
+* **Gates barely bite** (scar raw→gated +0.008, all-class +0.003): the 3D model produces few normal-case specks, so the speck-driven gate story is largely a stage-1 property.
+
 ### Polar cascade (stage-2 strip U-Net on 501-regions preds, gated)
 
 | Variant | Cavity | Myo | Scar | MVO | **All** |
@@ -124,11 +146,5 @@
 * GT-only simulation: shifting the endocardial scar layer by 1/2/3 px gives Dice 0.903/0.779/0.637 (mean), so a pure edge offset does not by itself explain 0.550.
 * Persistent failures: P051 (GT contour partly outside the predicted heart), P064, P088 (scar-present Dice ~0 to 0.13 in every run); nine cases with GT MVO of 13-39 voxels (P003, P010, P015, P039, P045, P063, P064, P074, P092) get MVO Dice 0 in all runs.
 
-### Scar growth rule (`--scar-grow-px 1`, after the scar gate)
 
-* Rule: after the 50-voxel scar gate, grow scar 1 px in-plane into cavity/myocardium only.
-* Order matters: growing before the gate raises normal-case FPs (3 -> 10 of 33).
-* Variants on ResEnc (scar-present / all-case): 0 px 0.550 / 0.668; 1 px cav+myo 0.572 / 0.683; 1 px myo only 0.558 / 0.674; 1 px cav only 0.565 / 0.678; 2 px cav+myo 0.535 / 0.659. Normal FPs stay 3/33.
-* Across runs, all-case scar (gated) before -> after: plain 0.656 -> 0.673, resenc 0.668 -> 0.683, regions 0.677 -> 0.699, 2.5d 0.683 -> 0.706, over 0.690 -> 0.706, polar 0.695 -> 0.704. Paired pathological-case gain (95% bootstrap CI over cases): plain +0.026 [+0.012, +0.039], resenc +0.022 [+0.007, +0.037], regions +0.033 [+0.019, +0.047], 2.5d +0.035 [+0.020, +0.051], over +0.025 [+0.009, +0.040], polar +0.014 [-0.002, +0.029]. Better/worse case counts for resenc: 41/24 (2 tied). Per-fold mean gain on resenc: +0.037, +0.029, +0.010, +0.040, -0.004.
-* Cavity/Myo cost (ResEnc): cavity 0.932 -> 0.930 (-0.002), myo 0.835 -> 0.830 (-0.005); MVO unchanged (0.721). All-case mean 0.789 -> 0.791.
-* Caveats: 1 px was chosen from three settings on the same cases it is scored on; folds/cases are shared across runs, so the five stage-1 gains are not independent; the rule can only reduce Cavity/Myo Dice. It does not change the ranking of the variants. Treat as an empirical correction, not a locked threshold like the gates.
+

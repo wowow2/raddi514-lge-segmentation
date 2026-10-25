@@ -22,7 +22,11 @@ class EMIDECDataset(Dataset):
                 subfolders (e.g. train/).
             group: optionally restrict to "Pathological" or "Normal".
         """
-        roots = [root_dir] if isinstance(root_dir, str) else list(root_dir)
+        roots = (
+            [os.fspath(root_dir)]
+            if isinstance(root_dir, (str, os.PathLike))
+            else [os.fspath(r) for r in root_dir]
+        )
         # Sorted per root so multi-root order follows the caller (train, then test).
         case_dirs = [
             d
