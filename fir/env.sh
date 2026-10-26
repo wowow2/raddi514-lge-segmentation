@@ -7,7 +7,8 @@ set -u
 # Overridable: export FIR_BASE=/project/def-punithak/aarizvi2/raddi514
 # before sourcing to run from /project if inodes recover.
 export FIR_BASE="${FIR_BASE:-/scratch/aarizvi2/raddi514}"
-export FIR_VENV=/scratch/aarizvi2/env_raddi514/bin/activate
+export FIR_VENV="${FIR_VENV:-/scratch/aarizvi2/env_raddi514/bin/activate}"
+export RADDI_CODE="${RADDI_CODE:-${POLAR_REPO:-/scratch/aarizvi2/raddi514code}}"
 
 export nnUNet_raw=$FIR_BASE/emidec_nnunet/nnUNet_raw
 export nnUNet_preprocessed=$FIR_BASE/emidec_nnunet/nnUNet_preprocessed
@@ -18,6 +19,23 @@ module load StdEnv/2023 python/3.11 cuda 2>/dev/null \
   || module load StdEnv/2023 python/3.11
 # shellcheck disable=SC1091
 source "$FIR_VENV"
+
+# Opt in to the shared root configuration for newly launched commands. Existing
+# jobs keep the FIR_BASE layout unless this file is explicitly selected.
+if [[ -n "${RADDI_ROOTS_FILE:-}" ]]; then
+  RADDI_CONFIGURED_NNUNET=$(python - "$RADDI_ROOTS_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1]).expanduser().resolve()
+root = Path(json.loads(path.read_text())["profiles"]["fir"]["nnunet"]).expanduser()
+print(root if root.is_absolute() else path.parent.parent / root)
+PY
+  ) || return 1
+  export nnUNet_raw="$RADDI_CONFIGURED_NNUNET/nnUNet_raw"
+  export nnUNet_preprocessed="$RADDI_CONFIGURED_NNUNET/nnUNet_preprocessed"
+  export nnUNet_results="$RADDI_CONFIGURED_NNUNET/nnUNet_results"
+fi
 
 # Show which layout is live on interactive shells only (not in job logs).
 if [[ -z "${SLURM_JOB_ID:-}" ]]; then
@@ -34,4 +52,11 @@ resolve_ds() {
     return 1
   fi
   basename "${matches[0]}"
+}
+
+# Wrappers share the same dry-run, submission and queue display sequence.
+submit_job() {
+  sbatch --test-only "$1" || return
+  sbatch "$1" || return
+  squeue -u "$USER"
 }

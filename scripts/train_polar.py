@@ -10,7 +10,7 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
+from src.config import DEFAULT_POLAR_MODEL_DIR, DEFAULT_STAGE1_PRED_DIR, DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
 from src.polar.trainer import PolarTrainer
 
 
@@ -34,13 +34,13 @@ def parse_args():
     parser.add_argument("--device", default=None, help="Device to use ('cuda', 'cpu', or auto-detect)")
     parser.add_argument(
         "--save-dir",
-        default="var/polar_models",
-        help="Root directory for saving checkpoints (default: var/polar_models)",
+        default=DEFAULT_POLAR_MODEL_DIR,
+        help=f"Root directory for saving checkpoints (default: {DEFAULT_POLAR_MODEL_DIR})",
     )
     parser.add_argument(
         "--pred-dir",
-        default="var/nnUNet_validation_501_pp",
-        help="Path to Stage 1 predictions for anchors (default: var/nnUNet_validation_501_pp)",
+        default=DEFAULT_STAGE1_PRED_DIR,
+        help=f"Path to Stage 1 predictions for anchors (default: {DEFAULT_STAGE1_PRED_DIR})",
     )
     parser.add_argument("--splits", default=DEFAULT_SPLITS_PATH, help="Path to splits_final.json")
     parser.add_argument("--gt-root", default=DEFAULT_GT_ROOT, help="Path to emidec_dataset/train")

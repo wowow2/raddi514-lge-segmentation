@@ -1,4 +1,4 @@
-"""CV report: per-case Dice distributions and bad-performer table.
+"""CV reports: --html for all experiments, or plots and a bad-performer table.
 
 By default this reads saved ``metrics`` files (fast, no volumes). Use
 ``--images`` to compute the worst-slice column from prediction NIfTIs, or
@@ -11,20 +11,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, repo_path
-from src.plotter import BadPerformersTable, CVData, DiceDistributionPlot
+from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, DEFAULT_REPORT_DIR, REPO_ROOT, repo_path
 from src.results import ResultsTable
 from src.runs import RunStore
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="CV plots and tables")
+    parser = argparse.ArgumentParser(description="CV HTML reporting, plots and tables")
+    parser.add_argument("--html", nargs="?", const=str(Path(DEFAULT_REPORT_DIR) / "experiments.html"),
+                        help="generate a standalone report of all canonical outputs; optionally give its path")
     parser.add_argument("--runs", nargs="*", default=None,
                         help="run ids (default: every discovered run)")
-    parser.add_argument("--root", action="append", default=None)
     parser.add_argument("--splits", default=DEFAULT_SPLITS_PATH)
     parser.add_argument("--gt-root", default=DEFAULT_GT_ROOT)
-    parser.add_argument("--out-dir", default="var/results")
+    parser.add_argument("--out-dir", default=DEFAULT_REPORT_DIR)
     parser.add_argument("--case-set", choices=["intersection", "union"],
                         default="intersection")
     parser.add_argument("--images", action="store_true",
@@ -45,9 +45,16 @@ def _common_cases(tables: dict[str, ResultsTable], mode: str) -> set[str]:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    if args.html:
+        if args.runs or args.images or args.from_images:
+            raise SystemExit("--html reports all canonical outputs; run/image selection flags apply only to plots")
+        from src.reporting import write_experiment_report
+        print(write_experiment_report(REPO_ROOT, repo_path(args.html)))
+        return 0
+    from src.plotter import BadPerformersTable, CVData, DiceDistributionPlot
     splits_path = repo_path(args.splits)
     gt_root = repo_path(args.gt_root)
-    store = RunStore(roots=args.root or None, splits_path=splits_path)
+    store = RunStore(splits_path=splits_path)
     runs = store.select(args.runs) if args.runs else store.discover()
     out_dir = Path(repo_path(args.out_dir))
     out_dir.mkdir(parents=True, exist_ok=True)

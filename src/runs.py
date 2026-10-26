@@ -1,13 +1,7 @@
-"""Run manifests, discovery, and a small experiment store.
+"""Experiment discovery, explicit output views and saved-result comparison.
 
-A run is described by a ``run.json`` manifest written next to its outputs
-(prediction directory, checkpoint directory, or results file). Manifests for
-the same ``run_id`` are merged, non-null fields winning, so training,
-prediction, and evaluation entry points can each contribute what they know
-without duplicating a central registry.
-
-Historical directories without a manifest are discovered read-only and marked
-``provenance.legacy`` with unknown fields left as ``None``.
+experiment.json and output.json are authoritative. Discovery never scans
+historical prediction directories or standalone metrics files.
 """
 
 from __future__ import annotations
@@ -23,22 +17,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from src.config import DEFAULT_SPLITS_PATH, REPO_ROOT
+from src.config import REPO_ROOT
+from src.experiment_registry import ArtifactRoots, catalog_views
+from src.layout import canonical_catalog, write_output
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
-from src.results import Comparison, ResultsTable, compare, is_evaluation_report
+from src.results import Comparison, ResultsTable, compare
 
 SCHEMA_VERSION = 1
 
 SECTIONS = ("model", "data", "training", "inference", "postprocess",
             "merge", "paths", "status", "provenance", "eval")
-
-DEFAULT_MANIFEST_ROOTS = ("var/runs", "var/models", "var/results")
-DEFAULT_LEGACY_ROOTS = (
-    "var/nnUNet_validation*",
-    "var/polar_preds*",
-    "var/polar_models*",
-)
 
 IDENTITY_PATHS = (
     "stage", "model.name", "model.params",
@@ -68,6 +57,16 @@ def _git(*args: str) -> str | None:
 def read_manifest(path: str | os.PathLike) -> dict[str, Any]:
     """Load a manifest, returning ``{}`` when the file does not exist."""
     path = Path(path)
+    if path.resolve().is_relative_to(REPO_ROOT):
+        catalog = canonical_catalog(REPO_ROOT)
+        if catalog is not None:
+            training = path.parent.parent / "training.json"
+            if path.parent.name == "checkpoints" and training.exists():
+                return json.loads(training.read_text())
+            current = json.loads(path.read_text()) if path.is_file() else {}
+            for name in (current.get("run_id"), path.parent.name, path.parent.parent.name):
+                if name in catalog["outputs"]:
+                    return catalog["outputs"][name]
     if not path.exists():
         return {}
     with open(path) as f:
@@ -75,13 +74,18 @@ def read_manifest(path: str | os.PathLike) -> dict[str, Any]:
 
 
 def write_manifest(path: str | os.PathLike,
-                   manifest: "RunManifest | dict[str, Any]") -> None:
+                   manifest: "RunManifest | dict[str, Any]") -> Path:
     """Write a manifest with consistent formatting."""
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     data = manifest.to_dict() if isinstance(manifest, RunManifest) else manifest
+    if path.resolve().is_relative_to(REPO_ROOT):
+        destination = write_output(REPO_ROOT, data)
+        if destination:
+            return destination
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+    return path
 
 
 def provenance_now(command: str | None = None) -> dict:
@@ -251,10 +255,7 @@ class Run:
         raise AttributeError(item)
 
     def resolve(self, value: str | os.PathLike | None) -> Path | None:
-        if value is None:
-            return None
-        path = Path(value).expanduser()
-        return path if path.is_absolute() else self.store.repo_root / path
+        return self.store.artifact_roots.resolve(value)
 
     @property
     def pred_dir(self) -> Path | None:
@@ -273,15 +274,9 @@ class Run:
         return self.resolve(self.manifest.get("paths.checkpoints"))
 
     def splits(self) -> CVSplits | None:
-        path = self.manifest.get("data.splits_path")
-        if path is None and self.manifest.legacy:
-            # Legacy directories may be partial: use a split stored beside the
-            # predictions, but never assume the repository default.
-            local = self.pred_dir / "splits_final.json" if self.pred_dir else None
-            if local is None or not local.exists():
-                return None
-            path = local
-        path = path or self.store.splits_path or DEFAULT_SPLITS_PATH
+        path = self.manifest.get("data.splits_path") or self.store.splits_path
+        if path is None:
+            return None
         resolved = self.resolve(path) or path
         try:
             return CVSplits.load(resolved, validate=False)
@@ -316,8 +311,13 @@ class Run:
     def checkpoint(self, fold: int = 0) -> Path | None:
         if self.checkpoint_dir is None:
             return None
-        for name in ("checkpoint_best.pt", "checkpoint_best.pth",
-                     "checkpoint_last.pt", "checkpoint_final.pth"):
+        names = {
+            "best": ("checkpoint_best.pt", "checkpoint_best.pth"),
+            "final": ("checkpoint_last.pt", "checkpoint_final.pth"),
+        }.get(self.manifest.get("inference.checkpoint"),
+              ("checkpoint_best.pt", "checkpoint_best.pth",
+               "checkpoint_last.pt", "checkpoint_final.pth"))
+        for name in names:
             path = self.checkpoint_dir / f"fold_{fold}" / name
             if path.exists():
                 return path
@@ -401,180 +401,38 @@ class Run:
 
 
 class RunStore:
-    """Discover manifests, legacy outputs, and compare saved results."""
+    """Discover canonical experiments and compare saved results."""
 
-    def __init__(self,
-                 roots: Iterable[str | os.PathLike] | None = None,
-                 legacy_roots: Iterable[str | os.PathLike] | None = None,
-                 repo_root: str | os.PathLike | None = None,
+    def __init__(self, repo_root: str | os.PathLike | None = None,
                  splits_path: str | os.PathLike | None = None):
         self.repo_root = Path(repo_root) if repo_root is not None else REPO_ROOT
+        self.artifact_roots = ArtifactRoots(self.repo_root)
         self.splits_path = str(splits_path) if splits_path else None
-        self.roots = self._expand(
-            DEFAULT_MANIFEST_ROOTS if roots is None else roots)
-        self.legacy_roots = self._expand(
-            legacy_roots if legacy_roots is not None else DEFAULT_LEGACY_ROOTS)
-        # Manifests are also written beside checkpoints and predictions.
-        for path in self.legacy_roots:
-            if path not in self.roots:
-                self.roots.append(path)
-        self.registry_dir = self.repo_root / "var/runs"
-        if self.registry_dir not in self.roots:
-            self.roots.append(self.registry_dir)
+        self._views: dict[str, Run] = {}
         self._runs: dict[str, Run] | None = None
 
-    # ------------------------------------------------------------ discovery
-    def _expand(self, patterns: Iterable[str | os.PathLike]) -> list[Path]:
-        found: list[Path] = []
-        for pattern in patterns:
-            raw = Path(pattern).expanduser()
-            if raw.is_absolute():
-                found.append(raw)
-                continue
-            if any(ch in str(pattern) for ch in "*?["):
-                found.extend(sorted(self.repo_root.glob(str(pattern))))
-            else:
-                found.append(self.repo_root / raw)
-        return [p for p in found if p.exists()]
-
-    @staticmethod
-    def _manifest_files(root: Path) -> list[Path]:
-        if root.is_dir():
-            return sorted(root.rglob("run.json"))
-        return [root] if root.name == "run.json" else []
-
-    def _collect_manifests(self) -> dict[str, list[tuple[Path, RunManifest]]]:
-        collected: dict[str, list[tuple[Path, RunManifest]]] = {}
-        for root in self.roots:
-            for path in self._manifest_files(root):
-                try:
-                    with open(path) as f:
-                        data = json.load(f)
-                    manifest = RunManifest.from_dict(data)
-                except (OSError, json.JSONDecodeError, TypeError):
-                    continue
-                if not manifest.run_id:
-                    continue
-                collected.setdefault(manifest.run_id, []).append((path, manifest))
-        return collected
-
-    @staticmethod
-    def _has_folds(path: Path) -> bool:
-        """True for prediction trees, not trainer dirs that only hold logs."""
-        return path.is_dir() and next(path.glob("fold_*/validation/*.nii.gz"), None) is not None
-
-    def _legacy_prediction_dirs(self) -> list[Path]:
-        found: list[Path] = []
-        for root in self.legacy_roots:
-            candidates = [root]
-            candidates += sorted(p for p in root.glob("*") if p.is_dir())
-            candidates += sorted(p for p in root.glob("*/*") if p.is_dir())
-            for path in candidates:
-                if self._has_folds(path) and not (path / "run.json").exists():
-                    if path not in found:
-                        found.append(path)
-        return found
-
-    def _legacy_metric_files(self) -> list[Path]:
-        results_dir = self.repo_root / "var/results"
-        if not results_dir.is_dir():
-            return []
-        return sorted(results_dir.glob("*.json"))
-
     def discover(self, refresh: bool = False) -> list[Run]:
-        if self._runs is not None and not refresh:
-            return sorted(self._runs.values(), key=lambda r: r.run_id)
-
-        collected = self._collect_manifests()
-        runs: dict[str, Run] = {}
-        sources: dict[str, list[Path]] = {}
-
-        for run_id, entries in collected.items():
-            entries = sorted(entries, key=lambda item: str(item[0]))
-            manifest = entries[0][1]
-            primary_path = entries[0][0]
-            conflicts: list[dict] = []
-            for other_path, other in entries[1:]:
-                for conflict in manifest.identity_conflicts(other):
-                    conflicts.append({
-                        **conflict,
-                        "sources": [str(primary_path), str(other_path)],
-                    })
-                manifest = manifest.merged_with(other)
-            if conflicts:
-                manifest.provenance["merge_conflicts"] = conflicts
-            runs[run_id] = Run(manifest, self)
-            sources[run_id] = [path for path, _ in entries]
-
-        # Read-only fallback for prediction directories without run.json.
-        # Skip a directory already registered/claimed by another run.
-        claimed_predictions = {
-            run.pred_dir.resolve() for run in runs.values() if run.pred_dir is not None}
-        for path in self._legacy_prediction_dirs():
-            if path.resolve() in claimed_predictions:
-                continue
-            run_id = self._unique_id(path.name, runs)
-            manifest = RunManifest(
-                run_id=run_id,
-                provenance={"legacy": True, "created_at": _now(),
-                            "source": "prediction directory (no run.json)"},
-                paths={"predictions": self._rel(path)},
-            )
-            runs[run_id] = Run(manifest, self)
-            sources[run_id] = [path]
-
-        # Read-only fallback for historical metrics files.
-        for path in self._legacy_metric_files():
-            try:
-                with open(path) as f:
-                    data = json.load(f)
-            except (OSError, json.JSONDecodeError):
-                continue
-            if not is_evaluation_report(data):
-                continue
-            claimed_metrics = {
-                run.metrics_path.resolve() for run in runs.values()
-                if run.metrics_path is not None}
-            if path.resolve() in claimed_metrics:
-                continue
-            existing = runs.get(path.stem)
-            if existing is not None:
-                if existing.manifest.get("paths.metrics") is None:
-                    existing.manifest.paths["metrics"] = self._rel(path)
-                    sources.setdefault(path.stem, []).append(path)
-                continue
-            manifest = RunManifest(
-                run_id=path.stem,
-                provenance={"legacy": True, "created_at": _now(),
-                            "source": "metrics file (no run.json)"},
-                paths={"metrics": self._rel(path)},
-            )
-            runs[path.stem] = Run(manifest, self)
-            sources[path.stem] = [path]
-
-        for run_id, run in runs.items():
-            run.sources = sources.get(run_id, [])
-        self._runs = runs
-        return sorted(runs.values(), key=lambda r: r.run_id)
-
-    @staticmethod
-    def _unique_id(base: str, existing: dict) -> str:
-        if base not in existing:
-            return base
-        suffix = 2
-        while f"{base}_{suffix}" in existing:
-            suffix += 1
-        return f"{base}_{suffix}"
-
-    def _rel(self, path: Path) -> str:
-        try:
-            return str(path.resolve().relative_to(self.repo_root.resolve()))
-        except ValueError:
-            return str(path)
+        if self._runs is None or refresh:
+            catalog = canonical_catalog(self.repo_root)
+            if catalog is None:
+                self._runs, self._views = {}, {}
+            else:
+                canonical, views = catalog_views(catalog)
+                self._views = {
+                    key: Run(RunManifest.from_dict(value), self, sources=[
+                        self.repo_root / "experiments" / catalog["membership"][key] / "outputs" / key / "output.json"])
+                    for key, value in views.items()}
+                self._runs = {
+                    key: Run(RunManifest.from_dict(value), self, sources=[
+                        self.repo_root / "experiments" / key / "experiment.json"])
+                    for key, value in canonical.items()}
+        return sorted(self._runs.values(), key=lambda run: run.run_id)
 
     # -------------------------------------------------------------- queries
     def get(self, run_id: str) -> Run:
         runs = {run.run_id: run for run in self.discover()}
+        if run_id in self._views:
+            return self._views[run_id]
         if run_id not in runs:
             raise KeyError(
                 f"Unknown run {run_id!r}. Known runs: {', '.join(sorted(runs)) or '(none)'}")
@@ -583,13 +441,7 @@ class RunStore:
     def select(self, run_ids: Iterable[str] | None = None, **filters: Any) -> list[Run]:
         runs = self.discover()
         if run_ids:
-            wanted = list(run_ids)
-            missing = sorted(set(wanted) - {r.run_id for r in runs})
-            if missing:
-                raise KeyError(f"Unknown runs: {', '.join(missing)}")
-            order = {run_id: i for i, run_id in enumerate(wanted)}
-            runs = sorted((r for r in runs if r.run_id in order),
-                          key=lambda r: order[r.run_id])
+            runs = [self.get(run_id) for run_id in run_ids]
         for key, expected in filters.items():
             if expected is None:
                 continue
@@ -598,10 +450,11 @@ class RunStore:
 
     # ------------------------------------------------------------- register
     def register(self, run_id: str, **fields: Any) -> Run:
-        """Write/merge an explicit manifest under ``var/runs/<run_id>``."""
-        path = self.registry_dir / run_id / "run.json"
-        existing = (RunManifest.from_dict(read_manifest(path))
-                    if path.exists() else None)
+        """Register or update a canonical output, rejecting identity conflicts."""
+        (self.repo_root / "experiments").mkdir(parents=True, exist_ok=True)
+        catalog = canonical_catalog(self.repo_root)
+        existing = (RunManifest.from_dict(catalog["outputs"][run_id])
+                    if run_id in catalog["outputs"] else None)
         manifest = RunManifest.from_dict({"run_id": run_id, **fields})
         if existing is not None:
             conflicts = manifest.identity_conflicts(existing)
@@ -611,11 +464,11 @@ class RunStore:
                     for c in conflicts)
                 raise ValueError(
                     f"Refusing to register {run_id}: identity conflicts with "
-                    f"{path} ({detail})")
+                    f"canonical metadata ({detail})")
             manifest = manifest.merged_with(existing)
-        write_manifest(path, manifest)
+        destination = write_output(self.repo_root, manifest.to_dict())
         self._runs = None
-        return Run(manifest, self, sources=[path])
+        return Run(manifest, self, sources=[destination])
 
     # -------------------------------------------------------------- compare
     def compare(self, run_ids: Iterable[str] | None = None, metric: str = "dice",

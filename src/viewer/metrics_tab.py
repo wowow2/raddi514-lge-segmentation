@@ -26,7 +26,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from src.config import EVAL_LABELS, LABEL_NAMES, repo_path
+from src.config import EVAL_LABELS, LABEL_NAMES, DEFAULT_REPORT_DIR
 
 from . import qt_theme
 from .model import ViewerModel, bootstrap_ci
@@ -171,6 +171,7 @@ class MetricsTab(QWidget):
     def _select_defaults(self) -> None:
         available = self.model.metric_run_ids()
         preferred = [
+            "cascade_503_resenc",
             "503_best_pp",
             "nnUNet_validation_pp",
             "nnUNet_validation_500resenc_pp",
@@ -453,7 +454,7 @@ class MetricsTab(QWidget):
 
     # ----------------------------------------------------------------- export
     def export_png(self, path: str | None = None) -> str:
-        out = Path(path) if path else repo_path("var/results/viewer_metrics.png")
+        out = Path(path) if path else Path(DEFAULT_REPORT_DIR) / "viewer_metrics.png"
         out.parent.mkdir(parents=True, exist_ok=True)
         self.figure.savefig(str(out), dpi=200, facecolor=DARK.figure_face,
                             bbox_inches="tight")

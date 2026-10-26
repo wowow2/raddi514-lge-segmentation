@@ -9,6 +9,7 @@ import nibabel as nib
 import numpy as np
 
 from src.runs import RunManifest, RunStore
+from src.layout import write_json
 
 
 def write_splits(root: Path) -> Path:
@@ -27,10 +28,11 @@ def write_prediction(path: Path) -> None:
 
 
 def write_manifest(directory: Path, run_id: str, **fields) -> Path:
-    directory.mkdir(parents=True, exist_ok=True)
-    payload = {"run_id": run_id, **fields}
-    path = directory / "run.json"
-    path.write_text(json.dumps(payload))
+    root = directory.parent
+    path = root / "experiments" / run_id / "outputs" / run_id / "output.json"
+    write_json(path, {"run_id": run_id, **fields})
+    write_json(path.parents[2] / "experiment.json", {
+        "experiment_id": run_id, "outputs": [run_id], "default_output": run_id})
     return path
 
 
@@ -60,72 +62,32 @@ class RunStoreTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _store(self, roots, **kwargs):
-        return RunStore(roots=roots, legacy_roots=kwargs.pop("legacy_roots", []),
-                        repo_root=self.root, splits_path=self.splits, **kwargs)
+    def _store(self, roots=()):
+        return RunStore(repo_root=self.root, splits_path=self.splits)
 
-    def test_discovery_filters_and_merge(self):
-        a = self.root / "a"
-        b = self.root / "b"
-        write_manifest(a, "run1", stage="stage1", tags=["baseline"],
-                       model={"name": "unet"},
-                       data={"splits_path": str(self.splits), "splits_sha256": "abc"},
-                       paths={"predictions": str(a)})
-        write_manifest(b, "run1", stage="stage1", tags=["gated"],
-                       paths={"metrics": str(b / "metrics.json")})
-        store = self._store([a, b])
-        runs = store.discover()
-        self.assertEqual([r.run_id for r in runs], ["run1"])
-        run = runs[0]
-        self.assertEqual(run.tags, ["baseline", "gated"])
-        self.assertEqual(run.manifest.get("model.name"), "unet")
-        self.assertEqual(run.metrics_path, b / "metrics.json")
-
-        write_manifest(self.root / "c", "run2", stage="stage2", model={"name": "polar"})
-        store = self._store([a, b, self.root / "c"])
+    def test_canonical_discovery_and_filters(self):
+        write_manifest(self.root / "a", "run1", stage="stage1", tags=["baseline"], model={"name": "unet"})
+        write_manifest(self.root / "b", "run2", stage="stage2", model={"name": "polar"})
+        store = self._store()
+        self.assertEqual([r.run_id for r in store.discover()], ["run1", "run2"])
         self.assertEqual([r.run_id for r in store.select(tag="baseline")], ["run1"])
         self.assertEqual([r.run_id for r in store.select(model="polar")], ["run2"])
         self.assertEqual([r.run_id for r in store.select(stage="stage1")], ["run1"])
 
-    def test_legacy_prediction_dir_is_read_only_and_marked_unknown(self):
-        pred = self.root / "legacy" / "fold_0" / "validation"
-        write_prediction(pred / "EMIDEC_P001.nii.gz")
-        store = self._store([], legacy_roots=[self.root / "legacy"])
-        run = store.get("legacy")
-        self.assertTrue(run.manifest.legacy)
-        self.assertIsNone(run.manifest.get("model.name"))
-        self.assertEqual(run.status()["n_present"], 1)
-        self.assertIsNone(run.status()["n_expected"])  # no split, coverage unknown
-        self.assertIsNone(run.status()["complete"])
-        self.assertFalse(run.status()["fully_tracked"])
+    def test_unregistered_artifacts_are_not_discovered(self):
+        write_prediction(self.root / "var/old/fold_0/validation/EMIDEC_P001.nii.gz")
+        write_metrics(self.root / "var/results/old.json", "old", [("Case_P001", 0)])
+        self.assertEqual(self._store().discover(), [])
 
-    def test_legacy_metrics_file_discovered(self):
-        path = self.root / "var/results/old_run.json"
-        write_metrics(path, "old_run", [("Case_P001", 0), ("Case_P002", 1)])
-        store = self._store([])
-        run = store.get("old_run")
-        self.assertTrue(run.manifest.legacy)
-        table = run.load_metrics()
-        self.assertEqual(len(table), 8)
-        self.assertEqual(len(table.case_ids()), 2)
 
-    def test_register_claims_legacy_prediction_dir(self):
-        pred_root = self.root / "legacy2"
-        write_prediction(pred_root / "fold_0/validation/EMIDEC_P001.nii.gz")
-        store = self._store([], legacy_roots=[pred_root])
-        store.register("registered", stage="stage1",
-                       data={"splits_path": str(self.splits)},
-                       paths={"predictions": str(pred_root)})
-        runs = self._store([], legacy_roots=[pred_root]).discover()
-        self.assertEqual([r.run_id for r in runs], ["registered"])
-        self.assertEqual(runs[0].status()["n_present"], 1)
+
 
     def test_register_persists_and_merges(self):
         store = self._store([])
         store.register("manual", stage="stage1", tags=["x"],
                        paths={"predictions": str(self.root / "p")},
                        model={"name": "unet"})
-        self.assertTrue((self.root / "var/runs/manual/run.json").exists())
+        self.assertTrue((self.root / "experiments/manual/outputs/manual/output.json").exists())
         reloaded = self._store([])
         run = reloaded.get("manual")
         self.assertEqual(run.manifest.stage, "stage1")
@@ -165,28 +127,6 @@ class RunStoreTests(unittest.TestCase):
         arr = run.load_pred("Case_P001")
         self.assertEqual(arr.shape, (2, 2, 1))
 
-    def test_conflicting_manifests_are_flagged_and_compare_rejects(self):
-        a = self.root / "a"
-        b = self.root / "b"
-        pred = self.root / "pred"
-        write_prediction(pred / "fold_0/validation/EMIDEC_P001.nii.gz")
-        write_manifest(a, "same", stage="stage1",
-                       model={"name": "unet", "params": {"in_channels": 1}},
-                       data={"splits_path": str(self.splits), "splits_sha256": "a" * 64},
-                       paths={"predictions": str(pred)})
-        write_manifest(b, "same", stage="stage1",
-                       model={"name": "unet", "params": {"in_channels": 1}},
-                       data={"splits_path": str(self.splits), "splits_sha256": "b" * 64},
-                       paths={"predictions": str(pred)})
-        write_metrics(a / "metrics.json", "same", [("Case_P001", 0)])
-        store = self._store([a, b])
-        run = store.get("same")
-        conflicts = run.status()["manifest_conflicts"]
-        self.assertEqual(len(conflicts), 1)
-        self.assertEqual(conflicts[0]["field"], "data.splits_sha256")
-        self.assertEqual(len(conflicts[0]["sources"]), 2)
-        with self.assertRaises(ValueError):
-            store.compare(["same"])
 
     def test_register_rejects_identity_conflict(self):
         pred = self.root / "pred"
@@ -197,16 +137,6 @@ class RunStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             store.register("reg", data={"splits_sha256": "b" * 64})
 
-    def test_polar_variant_directories_are_discovered(self):
-        for name in ("polar_preds_raw", "polar_preds_pp", "polar_models_radius"):
-            directory = self.root / "var" / name
-            write_manifest(directory, name, stage="stage2",
-                           paths={"predictions": str(directory)})
-        store = RunStore(roots=[], legacy_roots=None, repo_root=self.root,
-                         splits_path=self.splits)
-        found = {run.run_id for run in store.discover()}
-        self.assertTrue({"polar_preds_raw", "polar_preds_pp",
-                         "polar_models_radius"} <= found)
 
     def test_parent_and_source_links_persist(self):
         store = self._store([])

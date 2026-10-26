@@ -17,19 +17,12 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from src.analysis.probs import ProbIndex
-from src.config import (
-    DEFAULT_GT_ROOT,
-    DEFAULT_SPLITS_PATH,
-    EVAL_LABELS,
-    LABEL_NAMES,
-    LABEL_SCAR,
-    REPO_ROOT,
-    repo_path,
-)
+from src.config import (DEFAULT_GT_ROOT, DEFAULT_TEST_ROOT, EVAL_LABELS, LABEL_NAMES, LABEL_SCAR)
 from src.datautils.emidec_loader import EMIDECCase
 from src.runs import RunStore
+from src.layout import canonical_catalog
 
-TEST_ROOT = repo_path("var/emidec_dataset/test")
+TEST_ROOT = Path(DEFAULT_TEST_ROOT)
 
 SPLIT_ROOTS = {
     "train": [str(DEFAULT_GT_ROOT)],
@@ -284,13 +277,14 @@ class ViewerModel:
     def default_pred_run(self) -> str | None:
         """Prefer the best-checkpoint cascade when present."""
         preferred = (
+            "cascade_503_resenc",
             "503_best_pp",
             "nnUNet_validation_500over_pp_grow1",
             "nnUNet_validation_pp_grow1",
             "nnUNet_validation_500resenc_pp_grow1",
             "nnUNet_validation_501_pp_grow1",
             "nnUNet_validation_502_pp_grow1",
-            "polar_preds_add_t0.7",
+            "polar_preds_erase",
         )
         available = self.pred_run_ids()
         for run_id in preferred:
@@ -301,13 +295,19 @@ class ViewerModel:
     # ----------------------------------------------------------------- probed
     def _discover_prob_sources(self) -> None:
         """Find nnU-Net probability directories (OOF softmax .npz files)."""
-        roots = [REPO_ROOT / "var" / "nnUNet_results"]
-        splits = str(DEFAULT_SPLITS_PATH)
-        candidates: list[Path] = []
-        for root in roots:
-            if root.is_dir():
-                candidates.extend(sorted(p for p in root.glob("*/probs_*") if p.is_dir()))
-        for path in candidates:
+        catalog = canonical_catalog(self.store.repo_root)
+        if catalog is not None:
+            # The viewer overlays full images. Crop-space cascade probabilities
+            # need restoration before they can be offered here.
+            candidates = {}
+            for output in catalog["outputs"].values():
+                value = output.get("paths", {}).get("probabilities")
+                if value and output.get("inference", {}).get("probability_space") == "native":
+                    candidates[self.store.artifact_roots.resolve(value)] = (
+                        self.store.artifact_roots.resolve(output["data"]["splits_path"]))
+        else:
+            return
+        for path, splits in candidates.items():
             if not any(path.glob("fold_*/validation/*.npz")):
                 continue
             try:

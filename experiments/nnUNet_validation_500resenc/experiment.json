@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "experiment_id": "nnUNet_validation_500resenc",
+  "outputs": [
+    "nnUNet_validation_500resenc",
+    "nnUNet_validation_500resenc_pp",
+    "nnUNet_validation_500resenc_pp_grow1"
+  ],
+  "default_output": "nnUNet_validation_500resenc_pp",
+  "stage": "stage1",
+  "model": {
+    "name": "nnunet",
+    "trainer": "nnUNetTrainer",
+    "plans": "nnUNetResEncUNetMPlans",
+    "configuration": "2d"
+  }
+}

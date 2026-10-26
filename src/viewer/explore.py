@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from src.config import LABEL_NAMES, LABEL_SCAR, repo_path
+from src.config import LABEL_NAMES, LABEL_SCAR, DEFAULT_REPORT_DIR
 
 from . import qt_theme
 from .model import (CHANNELS, ViewerModel, contour_color, error_rgba, label_rgba,
@@ -694,8 +694,8 @@ class ExploreTab(QWidget):
 
     def export_png(self, path: str | None = None) -> str:
         self.canvas.draw()
-        out = Path(path) if path else repo_path(
-            f"var/results/viewer_{self.model.current_case.case_id}"
+        out = Path(path) if path else Path(DEFAULT_REPORT_DIR) / (
+            f"viewer_{self.model.current_case.case_id}"
             f"_s{self.model.slice_idx + 1}.png")
         out.parent.mkdir(parents=True, exist_ok=True)
         self.grab().save(str(out))

@@ -17,8 +17,9 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, repo_path
+from src.config import DEFAULT_POLAR_MODEL_DIR, DEFAULT_STAGE1_PRED_DIR, DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, repo_path
 from src.datautils.splits import CVSplits
+from src.layout import artifact_id
 from src.runs import RunManifest, provenance_now, read_manifest, write_manifest
 from .dataset import PolarDataset
 from .loss import CompoundLoss
@@ -53,8 +54,8 @@ class PolarTrainer:
         use_radius: bool = False,
         deep_supervision: bool = True,
         device: str | None = None,
-        save_dir: str = "var/polar_models",
-        pred_dir: str = "var/nnUNet_validation_501_pp",
+        save_dir: str = DEFAULT_POLAR_MODEL_DIR,
+        pred_dir: str = DEFAULT_STAGE1_PRED_DIR,
         splits_path: str = DEFAULT_SPLITS_PATH,
         gt_root: str = DEFAULT_GT_ROOT,
         num_workers: int = 2,
@@ -160,7 +161,7 @@ class PolarTrainer:
             **self.model_params,
         }
         return {
-            "run_id": run_id or self.save_dir.resolve().name,
+            "run_id": run_id or artifact_id(self.save_dir),
             "model": {"name": self.model_name, "params": model_params},
             "data": {
                 "gt_root": str(gt_root),
@@ -191,11 +192,11 @@ class PolarTrainer:
                         tags, description: str | None) -> None:
         path = self.save_dir / "run.json"
         manifest = RunManifest.from_dict(read_manifest(path))
-        manifest.run_id = run_id or manifest.run_id or self.save_dir.resolve().name
+        manifest.run_id = run_id or manifest.run_id or artifact_id(self.save_dir)
         manifest.stage = manifest.stage or "stage2"
         manifest.description = description or manifest.description
         manifest.tags = sorted(set(manifest.tags) | set(tags))
-        manifest.source_run = manifest.source_run or Path(pred_dir).name
+        manifest.source_run = manifest.source_run or artifact_id(pred_dir)
         manifest.model = self.config["model"]
         fold_specific = {"fold", "train_slices", "val_slices"}
         manifest.data.update({k: v for k, v in self.config["data"].items()

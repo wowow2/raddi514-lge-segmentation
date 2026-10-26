@@ -21,6 +21,7 @@ from src.datautils.postprocess import (
 )
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
+from src.layout import artifact_id
 from src.runs import RunManifest, provenance_now, read_manifest, write_manifest
 
 
@@ -63,7 +64,7 @@ def main(argv=None) -> int:
     if args.no_manifest:
         return 0
 
-    run_id = args.run_id or out_dir.name
+    run_id = args.run_id or artifact_id(out_dir)
     parent = read_manifest(pred_dir / "run.json")
     splits = None
     try:
@@ -76,7 +77,7 @@ def main(argv=None) -> int:
     manifest.description = args.description or manifest.description
     manifest.display_name = args.display_name or manifest.display_name
     manifest.tags = sorted(set(manifest.tags) | set(args.tag))
-    manifest.parent_run = args.parent_run or manifest.parent_run or pred_dir.name
+    manifest.parent_run = args.parent_run or parent.get("run_id") or artifact_id(pred_dir)
     manifest.postprocess = {
         "ops": post.ops(),
         "min_scar_voxels": post.min_scar_voxels,
@@ -99,8 +100,8 @@ def main(argv=None) -> int:
     manifest.provenance = provenance_now("scripts/apply_postprocess.py")
 
     path = out_dir / "run.json"
-    write_manifest(path, manifest)
-    print(f"wrote manifest -> {path}")
+    destination = write_manifest(path, manifest)
+    print(f"wrote manifest -> {destination}")
     return 0
 
 

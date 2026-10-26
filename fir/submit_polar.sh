@@ -37,7 +37,7 @@ for arg in "${@:2}"; do
   esac
 done
 
-REPO="${POLAR_REPO:-/scratch/aarizvi2/raddi514code}"
+REPO="${POLAR_REPO:-$RADDI_CODE}"
 DATA="$FIR_BASE/polar_data"
 for p in "$DATA/emidec_train" "$DATA/splits_final.json" "$DATA/501_pp"; do
   [[ -e "$p" ]] || { echo "missing bundle path: $p" >&2; exit 1; }
@@ -68,6 +68,4 @@ python "${REPO}/scripts/train_polar.py" --fold ${FOLD} --epochs ${EPOCHS} \
 EOF
 
 mkdir -p logs "$DATA/${MODEL_SUBDIR}"
-sbatch --test-only "$SBATCH_FILE"
-sbatch "$SBATCH_FILE"
-squeue -u "$USER"
+submit_job "$SBATCH_FILE"

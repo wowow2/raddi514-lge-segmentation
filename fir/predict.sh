@@ -1,26 +1,16 @@
 #!/usr/bin/env bash
-# Run 5-fold predictions on Fir for ANY dataset ID, then pack for download.
-# Output layout matches scripts/evaluate_nnunet_cv.py:
-#   preds_<plans>_<config>/fold_<F>/validation/<nnunet_id>.nii.gz
-#
-#   ./predict.sh 501            # submit short GPU job (defaults: ResEncM, 2d)
-#   ./predict.sh 501 --cpu      # same, but CPU-only job
-#   ./predict.sh 501 --cpu --parts 8  # CPU job, 8 parallel procs/fold, cores scaled up
-#   ./predict.sh 501 --local    # no job: run CPU inference in this shell (login-node style)
-#   ./predict.sh 501 --local --parts 4  # same, 4 parallel procs per fold (keep parts*threads <= cores)
-#   ./predict.sh 501 --pack     # after predictions finish: tar preds, print scp line
-#   ./predict.sh 500 --plans=nnUNetPlans --config=2d
-#   ./predict.sh 500 --tr=nnUNetTrainer_probabilisticOversampling
-#
-# Uses -chk checkpoint_best.pth explicitly (predict defaults to final,
-# which wall-stopped runs lack) — best is the correct checkpoint anyway.
+# BEST-checkpoint prediction, locally or as a Slurm job.
+#   ./predict.sh 501 --cpu --parts=4
+#   ./predict.sh 500 --oof --save-probabilities --tr=nnUNetTrainer_probabilisticOversampling
+#   ./predict.sh 501 --local --oof
+#   ./predict.sh 501 --pack
+# --save-probabilities implies --oof and preserves the former probs_* paths.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
 source "$HERE/env.sh"
 cd "$FIR_BASE"
 
-DATASET="${1:?Usage: predict.sh <dataset-id> [--pack] [--cpu] [--local] [--parts=N] [--plans=X] [--config=Y] [--tr=Trainer]}"
+DATASET="${1:?Usage: predict.sh <dataset-id> [--oof] [--save-probabilities] [--cpu|--local] [--parts=N] [--pack] [--plans=X] [--config=Y] [--tr=Trainer] [--time=HH:MM:SS]}"
 PLAN="nnUNetResEncUNetMPlans"
 CONFIG="2d"
 TR=""
@@ -28,103 +18,129 @@ PACK=0
 LOCAL=0
 PARTS=1
 CPU=0
-RES_LINES="#SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_2g.20gb:1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
-#SBATCH --time=04:00:00"
-DEVICE_ARGS=""
-EXTRA_LINES=""
+OOF=0
+SAVE_PROBS=0
+TIME=""
 set -- "${@:2}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pack) PACK=1; shift ;;
-    --local) LOCAL=1; shift ;;
+    --local) LOCAL=1; CPU=1; shift ;;
+    --cpu) CPU=1; shift ;;
+    --oof) OOF=1; shift ;;
+    --save-probabilities) SAVE_PROBS=1; OOF=1; shift ;;
     --parts) PARTS="${2:?--parts needs a value}"; shift 2 ;;
     --parts=*) PARTS="${1#--parts=}"; shift ;;
-    --cpu) CPU=1; shift ;;
     --plans=*) PLAN="${1#--plans=}"; shift ;;
     --config=*) CONFIG="${1#--config=}"; shift ;;
     --tr=*) TR="${1#--tr=}"; shift ;;
+    --time=*) TIME="${1#--time=}"; shift ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
+[[ "$PARTS" =~ ^[1-9][0-9]*$ ]] || { echo "--parts must be a positive integer" >&2; exit 1; }
 
+RES_LINES="#SBATCH --gpus-per-node=nvidia_h100_80gb_hbm3_2g.20gb:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G"
+DEVICE_ARGS=""
+EXTRA_LINES=""
 if [[ "$CPU" -eq 1 ]]; then
-  # 4 threads per part; floor keeps --parts 1 at the old 8 CPU / 32G shape.
   CPUS=$((PARTS * 4)); [[ "$CPUS" -lt 8 ]] && CPUS=8
   MEM=$((PARTS * 8)); [[ "$MEM" -lt 32 ]] && MEM=32
   RES_LINES="#SBATCH --cpus-per-task=${CPUS}
-#SBATCH --mem=${MEM}G
-#SBATCH --time=08:00:00"
+#SBATCH --mem=${MEM}G"
+  TIME="${TIME:-08:00:00}"
   DEVICE_ARGS="-device cpu"
   EXTRA_LINES='export OMP_NUM_THREADS=4'
+  if [[ "$LOCAL" -eq 1 ]]; then EXTRA_LINES='export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"'; fi
+elif [[ "$SAVE_PROBS" -eq 1 ]]; then
+  TIME="${TIME:-02:00:00}"
+else
+  TIME="${TIME:-04:00:00}"
 fi
 
 NAME="$(resolve_ds "$DATASET")"
-# Trainer suffix keeps custom-trainer preds off the default path (which the
-# locked post-processing and scoring assume); empty for the default trainer.
 TSUFFIX=""
 TR_FLAG=""
 if [[ -n "$TR" ]]; then TSUFFIX="_${TR}"; TR_FLAG="-tr $TR"; fi
-PREDROOT="$nnUNet_results/$NAME/preds_${PLAN}_${CONFIG}${TSUFFIX}"
-
-if [[ "$LOCAL" -eq 1 ]]; then
-  # Login-node style: CPU inference in this shell, no Slurm job.
-  # --parts N splits each fold across N parallel processes; keep PARTS*THREADS <= cores.
-  export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
-  for f in 0 1 2 3 4; do
-    echo "fold $f ($PARTS part(s))..."
-    mkdir -p "$PREDROOT/fold_$f/validation"
-    for p in $(seq 0 $((PARTS - 1))); do
-      nnUNetv2_predict -d "$DATASET" -i "$nnUNet_raw/$NAME/imagesTr" \
-        -o "$PREDROOT/fold_$f/validation" -f "$f" -c "$CONFIG" -p "$PLAN" \
-        ${TR_FLAG} -chk checkpoint_best.pth -device cpu --continue_prediction --disable_progress_bar \
-        -num_parts "$PARTS" -part_id "$p" &
-    done
-    for pid in $(jobs -p); do wait "$pid" || exit 1; done
-  done
-  echo "done. Pack with: ./predict.sh $DATASET --pack"
-  exit 0
+PREFIX="preds"
+SUFFIX=""
+PROB_ARGS=""
+CONTINUE_ARGS="--continue_prediction"
+if [[ "$SAVE_PROBS" -eq 1 ]]; then
+  PREFIX="probs"; PROB_ARGS="--save_probabilities"; CONTINUE_ARGS=""
+elif [[ "$OOF" -eq 1 ]]; then
+  SUFFIX="_oof"
 fi
+PREDROOT="$nnUNet_results/$NAME/${PREFIX}_${PLAN}_${CONFIG}${TSUFFIX}${SUFFIX}"
 
-if [[ "$PACK" -eq 1 ]]; then
-  n=$(find "$PREDROOT" -name '*.nii.gz' 2>/dev/null | wc -l)
-  echo "prediction files: $n (expect 500 = 100 cases x 5 folds)"
-  TAG="${NAME}__${TR:-nnUNetTrainer}__${PLAN}__${CONFIG}"
-  tar czf "$FIR_BASE/${TAG}_preds.tar.gz" -C "$PREDROOT" .
-  ls -lh "$FIR_BASE/${TAG}_preds.tar.gz"
-  echo "download with: scp fir:${FIR_BASE}/${TAG}_preds.tar.gz ."
+if [[ "$PACK" -eq 1 && "$LOCAL" -eq 0 ]]; then
+  TAG="${NAME}__${TR:-nnUNetTrainer}__${PLAN}__${CONFIG}_${PREFIX}${SUFFIX}"
+  tar czf "$FIR_BASE/${TAG}.tar.gz" -C "$PREDROOT" .
+  echo "download with: scp fir:${FIR_BASE}/${TAG}.tar.gz ."
   exit 0
 fi
 
 SBATCH_FILE="$(mktemp /tmp/predict_${DATASET}_XXXX.sh)"
 cat > "$SBATCH_FILE" <<EOF
 #!/bin/bash
-set -euo pipefail
 #SBATCH --account=def-punithak
 ${RES_LINES}
+#SBATCH --time=${TIME}
 #SBATCH --job-name=pred_${DATASET}
 #SBATCH --output=logs/predict_${DATASET}_%j.out
 
+set -euo pipefail
 source "${HERE}/env.sh"
 cd "\$FIR_BASE"
-mkdir -p logs
 ${EXTRA_LINES}
-
-# ${NAME} | ${PLAN} | ${CONFIG} ${TR_FLAG} | checkpoint_best (explicit)
+INPUT_ROOT="\$nnUNet_raw/${NAME}/imagesTr"
+if [[ ${OOF} -eq 1 ]]; then
+  SPLITS="\$nnUNet_preprocessed/${NAME}/splits_final.json"
+  [[ -f "\$SPLITS" ]] || SPLITS="\$FIR_BASE/polar_data/splits_final.json"
+  INPUT_ROOT=\$(mktemp -d "\${SLURM_TMPDIR:-\${TMPDIR:-/tmp}}/raddi_oof_${DATASET}_XXXXXX")
+  python - "\$SPLITS" "\$nnUNet_raw/${NAME}/imagesTr" "\$INPUT_ROOT" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+split_path, source, target = map(Path, sys.argv[1:])
+splits = json.loads(split_path.read_text())
+expected = '1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b'
+digest = hashlib.sha256(json.dumps(splits, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+if digest != expected:
+    raise ValueError(f'Original split identity differs: {split_path}')
+for fold, split in enumerate(splits):
+    folder = target / f'fold_{fold}'
+    folder.mkdir()
+    for case in split['val']:
+        channels = sorted(source.glob(f'{case}_*.nii.gz'))
+        if not channels:
+            raise FileNotFoundError(f'No input channels for {case}')
+        for channel in channels:
+            (folder / channel.name).symlink_to(channel.resolve())
+PY
+fi
 for f in 0 1 2 3 4; do
+  INPUT="\$INPUT_ROOT"
+  if [[ ${OOF} -eq 1 ]]; then INPUT="\$INPUT_ROOT/fold_\$f"; fi
   mkdir -p "${PREDROOT}/fold_\$f/validation"
+  pids=()
   for p in \$(seq 0 $((PARTS - 1))); do
-    nnUNetv2_predict -d ${DATASET} -i "\$nnUNet_raw/${NAME}/imagesTr" \\
+    nnUNetv2_predict -d ${DATASET} -i "\$INPUT" \\
       -o "${PREDROOT}/fold_\$f/validation" -f \$f -c ${CONFIG} -p ${PLAN} \\
-      ${TR_FLAG} -chk checkpoint_best.pth ${DEVICE_ARGS} --continue_prediction --disable_progress_bar \\
+      ${TR_FLAG} -chk checkpoint_best.pth ${DEVICE_ARGS} ${CONTINUE_ARGS} ${PROB_ARGS} --disable_progress_bar \\
       -num_parts ${PARTS} -part_id \$p &
+    pids+=(\$!)
   done
-  for pid in \$(jobs -p); do wait "\$pid" || exit 1; done
+  for pid in "\${pids[@]}"; do wait "\$pid"; done
 done
 EOF
 
 mkdir -p logs
-sbatch --test-only "$SBATCH_FILE"
-sbatch "$SBATCH_FILE"
-squeue -u "$USER"
+if [[ "$LOCAL" -eq 1 ]]; then
+  bash "$SBATCH_FILE"
+else
+  submit_job "$SBATCH_FILE"
+fi

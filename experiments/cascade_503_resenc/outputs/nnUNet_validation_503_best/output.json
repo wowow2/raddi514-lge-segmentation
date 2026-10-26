@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "run_id": "nnUNet_validation_503_best",
+  "description": "BEST-checkpoint cascade predictions restored to full-image space, before postprocessing. Probability files remain in crop space.",
+  "display_name": "Dataset503 BEST \u2014 raw, before postprocessing",
+  "tags": [],
+  "stage": "stage2",
+  "parent_run": null,
+  "source_run": "nnUNet_validation_500over",
+  "model": {
+    "name": "nnunet",
+    "trainer": "nnUNetTrainer",
+    "plans": "nnUNetResEncUNetMPlans",
+    "configuration": "3d_fullres"
+  },
+  "data": {
+    "dataset": "Dataset503_EMIDEC_Cascade",
+    "channels": 6,
+    "label_scheme": "flat",
+    "splits_path": "data://splits/emidec-1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b.json",
+    "splits_sha256": "1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b",
+    "gt_root": "data://source/emidec/train",
+    "n_folds": 5,
+    "n_cases": 100
+  },
+  "training": {},
+  "inference": {
+    "checkpoint": "best",
+    "checkpoint_evidence": "explicit migration argument; investigation of training/inference commands",
+    "probability_space": "crop"
+  },
+  "postprocess": {},
+  "merge": {},
+  "paths": {
+    "predictions": "experiments://cascade_503_resenc/outputs/nnUNet_validation_503_best/predictions",
+    "checkpoints": "nnunet://nnUNet_results/Dataset503_EMIDEC_Cascade/nnUNetTrainer__nnUNetResEncUNetMPlans__3d_fullres",
+    "probabilities": "nnunet://nnUNet_results/Dataset503_EMIDEC_Cascade/probs_nnUNetResEncUNetMPlans_3d_fullres",
+    "metrics": "experiments://cascade_503_resenc/outputs/nnUNet_validation_503_best/metrics.json"
+  },
+  "status": {
+    "prediction": {
+      "pred_dir": "/home/abbas/Desktop/UofA/Raddi 514/Course Project/experiments/cascade_503_resenc/outputs/nnUNet_validation_503_best/predictions",
+      "n_expected": 100,
+      "n_present": 100,
+      "missing_cases": [],
+      "per_fold": {
+        "0": {
+          "expected": 20,
+          "present": 20
+        },
+        "1": {
+          "expected": 20,
+          "present": 20
+        },
+        "2": {
+          "expected": 20,
+          "present": 20
+        },
+        "3": {
+          "expected": 20,
+          "present": 20
+        },
+        "4": {
+          "expected": 20,
+          "present": 20
+        }
+      },
+      "ambiguous_folds": [],
+      "splits_sha256": "1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b"
+    },
+    "missing_cases": [],
+    "expected_outputs": "oof"
+  },
+  "provenance": {
+    "created_at": "2026-10-26T00:11:49Z",
+    "git_commit": "0d640ec822eb7c5f4fe27cab81802e452d167e13",
+    "git_dirty": true,
+    "command": "scripts/evaluate_nnunet_cv.py",
+    "python": "3.12.3",
+    "host": "abbas",
+    "packages": {
+      "torch": "2.14.0+cpu",
+      "nnunetv2": "2.8.1",
+      "nibabel": "5.4.2",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "surface-distance": "0.1",
+      "scikit-learn": "1.9.0",
+      "matplotlib": "3.11.1"
+    }
+  },
+  "eval": {}
+}

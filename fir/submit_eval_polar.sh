@@ -22,11 +22,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/env.sh"
 cd "$FIR_BASE"
 
-REPO="${POLAR_REPO:-/scratch/aarizvi2/raddi514code}"
+REPO="${POLAR_REPO:-$RADDI_CODE}"
 DATA="$FIR_BASE/polar_data"
 
 VARIANT="${1:-base}"
-TAG=""; MODEL_SUBDIR="polar_models"; OUT_SUFFIX=""
+TAG=""; MODEL_SUBDIR="polar_models"
 case "$VARIANT" in
   base) ;;
   radius) TAG="_radius"; MODEL_SUBDIR="polar_models_radius" ;;
@@ -83,6 +83,4 @@ python "${REPO}/scripts/evaluate_polar.py" --device cpu \
 EOF
 
 mkdir -p logs
-sbatch --test-only "$SBATCH_FILE"
-sbatch "$SBATCH_FILE"
-squeue -u "$USER"
+submit_job "$SBATCH_FILE"

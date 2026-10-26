@@ -9,7 +9,7 @@ Examples::
     python scripts/runs.py results --all --class-name Scar --gt-present
     python scripts/runs.py compare --all --metric dice --require-same-cases
     python scripts/runs.py compare 501_regions_pp polar_add_r64_pp --csv /tmp/cmp.csv
-    python scripts/runs.py cases --out var/cache/case_metadata.json
+    python scripts/runs.py cases --out data/cache/case_metadata.json
 """
 
 import argparse
@@ -19,13 +19,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import DEFAULT_GT_ROOT
+from src.config import DEFAULT_GT_ROOT, DEFAULT_CACHE_DIR
 from src.results import ResultsTable
 from src.runs import RunStore
 
 
 def _store(args) -> RunStore:
-    return RunStore(roots=args.root or None, splits_path=args.splits)
+    return RunStore(splits_path=args.splits)
 
 
 def _print_table(rows: list[dict]) -> None:
@@ -142,7 +142,7 @@ def cmd_register(args) -> int:
     if args.extra:
         fields.update(json.loads(args.extra))
     run = store.register(args.run_id, **fields)
-    print(f"registered {run.run_id} -> {store.registry_dir / run.run_id / 'run.json'}")
+    print(f"registered {run.run_id} -> {run.sources[0]}")
     return 0
 
 
@@ -266,8 +266,6 @@ def cmd_cases(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Discover runs and compare saved metrics")
-    parser.add_argument("--root", action="append", default=None,
-                        help="manifest/output root to scan (repeatable)")
     parser.add_argument("--splits", default=None, help="default splits_final.json")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -347,7 +345,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("cases", help="write case-level dataset metadata")
     p.add_argument("--gt-root", default=DEFAULT_GT_ROOT)
-    p.add_argument("--out", default="var/cache/case_metadata.json")
+    p.add_argument("--out", default=str(Path(DEFAULT_CACHE_DIR) / "case_metadata.json"))
     p.set_defaults(func=cmd_cases)
     return parser
 

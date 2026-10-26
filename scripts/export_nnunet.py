@@ -11,7 +11,7 @@ from src.datautils import (
     REGION_LABEL_NAMES,
     NnunetExporter,
 )
-from src.config import DEFAULT_GT_ROOT, repo_path
+from src.config import DEFAULT_GT_ROOT, DEFAULT_TEST_ROOT, DEFAULT_NNUNET_RAW
 from src.datautils.emidec_dataset import EMIDECDataset
 
 
@@ -19,10 +19,10 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Export EMIDEC to nnUNet raw format")
-    parser.add_argument("--out", default="var/nnUNet_raw", help="nnUNet_raw root directory")
+    parser.add_argument("--out", default=DEFAULT_NNUNET_RAW, help="nnUNet_raw root directory")
     parser.add_argument("--gt-root", default=DEFAULT_GT_ROOT,
                         help="training cases (Case_*/Images + Contours)")
-    parser.add_argument("--test-root", default=str(repo_path("var/emidec_dataset/test")),
+    parser.add_argument("--test-root", default=DEFAULT_TEST_ROOT,
                         help="blind test cases (Case_*/Images)")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--task-name", default="Dataset500_EMIDEC",

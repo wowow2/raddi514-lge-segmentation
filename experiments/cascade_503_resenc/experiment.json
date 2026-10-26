@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "experiment_id": "cascade_503_resenc",
+  "outputs": [
+    "503_3d",
+    "503_3d_pp",
+    "503_3d_raw",
+    "503_best_pp",
+    "nnUNet_validation_503_best"
+  ],
+  "default_output": "503_best_pp",
+  "stage": "stage2",
+  "model": {
+    "name": "nnunet",
+    "trainer": "nnUNetTrainer",
+    "plans": "nnUNetResEncUNetMPlans",
+    "configuration": "3d_fullres"
+  }
+}

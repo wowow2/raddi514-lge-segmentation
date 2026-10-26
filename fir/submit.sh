@@ -55,9 +55,9 @@ cd "\$FIR_BASE"
 # Only the trained dataset is staged into \$SLURM_TMPDIR; the shared copies of
 # 500/501/502 (600+ MB) would otherwise be copied for every job.
 mkdir -p "\$SLURM_TMPDIR/nn/nnUNet_preprocessed" "\$SLURM_TMPDIR/nn/nnUNet_raw"
-cp -r "\$FIR_BASE/emidec_nnunet/nnUNet_preprocessed/${NAME}" \
+cp -r "\$nnUNet_preprocessed/${NAME}" \
       "\$SLURM_TMPDIR/nn/nnUNet_preprocessed/"
-cp -r "\$FIR_BASE/emidec_nnunet/nnUNet_raw/${NAME}" \
+cp -r "\$nnUNet_raw/${NAME}" \
       "\$SLURM_TMPDIR/nn/nnUNet_raw/"
 export nnUNet_preprocessed="\$SLURM_TMPDIR/nn/nnUNet_preprocessed"
 export nnUNet_raw="\$SLURM_TMPDIR/nn/nnUNet_raw"
@@ -67,6 +67,4 @@ nnUNetv2_train ${DATASET} ${CONFIG} \$SLURM_ARRAY_TASK_ID -p ${PLAN} ${TR_FLAG} 
 EOF
 
 mkdir -p logs
-sbatch --test-only "$SBATCH_FILE"
-sbatch "$SBATCH_FILE"
-squeue -u "$USER"
+submit_job "$SBATCH_FILE"

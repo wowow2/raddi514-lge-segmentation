@@ -14,6 +14,8 @@ from nnunetv2.dataset_conversion.generate_dataset_json import (
     generate_dataset_json,
 )
 
+from src.config import DEFAULT_NNUNET_RAW
+
 TASK_NAME = "Dataset500_EMIDEC"
 LABEL_NAMES = {
     "background": 0,
@@ -68,7 +70,7 @@ class NnunetExporter:
     """Convert EMIDEC cases to nnUNet raw layout.
 
     Usage:
-        NnunetExporter(out_dir="var/nnUNet_raw").export(train_cases, test_cases)
+        NnunetExporter(out_dir="data/nnunet/nnUNet_raw").export(train_cases, test_cases)
 
     For region-based training pass ``labels=REGION_LABEL_NAMES`` and
     ``regions_class_order=REGION_CLASS_ORDER`` (with a distinct task_name
@@ -80,7 +82,7 @@ class NnunetExporter:
     files ``_0000/_0001/_0002`` (slice z-1/z/z+1, edge-replicated).
     """
 
-    def __init__(self,                  out_dir: str = "var/nnUNet_raw",
+    def __init__(self,                  out_dir: str = DEFAULT_NNUNET_RAW,
                  task_name: str = TASK_NAME, overwrite: bool = False,
                  labels: dict | None = None,
                  regions_class_order: tuple | None = None,

@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from src.config import LABEL_NAMES, LABEL_SCAR, repo_path
+from src.config import LABEL_NAMES, LABEL_SCAR, DEFAULT_REPORT_DIR
 
 from . import qt_theme
 from .model import ViewerModel, contour_color, error_rgba, label_rgba, montage_cols
@@ -348,8 +348,8 @@ class CompareTab(QWidget):
 
     def export_png(self, path: str | None = None) -> str:
         self.canvas.draw()
-        out = Path(path) if path else repo_path(
-            f"var/results/viewer_compare_{self.model.current_case.case_id}.png")
+        out = Path(path) if path else Path(DEFAULT_REPORT_DIR) / (
+            f"viewer_compare_{self.model.current_case.case_id}.png")
         out.parent.mkdir(parents=True, exist_ok=True)
         self.grab().save(str(out))
         self.status.emit(f"Saved {out}")

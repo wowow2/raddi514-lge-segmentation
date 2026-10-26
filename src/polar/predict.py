@@ -19,11 +19,41 @@ from src.datautils.emidec_dataset import EMIDECDataset
 from src.datautils.postprocess import PostProcessor
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
+from src.layout import artifact_id
+from src.runs import RunManifest, read_manifest
 from .anchors import CaseAnchors
 from .checkpoint import load_model, polar_resolution
 from .merge import PolarMerger
 
 CaseCallback = Callable[[int, str, np.ndarray], None]
+
+
+def prediction_manifest(result, model_dir, pred_out, stage1_dir, splits, gt_root,
+                        *, inference, gate=None):
+    """Shared output identity and lineage for prediction and evaluation CLIs."""
+    model_dir, pred_out = Path(model_dir), Path(pred_out)
+    parent = RunManifest.from_dict(read_manifest(model_dir / "run.json"))
+    return RunManifest(
+        run_id=artifact_id(pred_out), stage="stage2",
+        description=parent.description, display_name=parent.display_name,
+        tags=list(parent.tags), parent_run=parent.run_id or model_dir.name,
+        source_run=artifact_id(stage1_dir),
+        model=result["config"].get("model") or parent.model,
+        training=parent.training,
+        data={"gt_root": str(gt_root), "splits_path": str(splits.path),
+              "splits_sha256": splits.sha256, "n_folds": len(splits.folds),
+              "n_cases": len(splits.case_ids()),
+              "stage1_predictions": str(Path(stage1_dir).resolve()),
+              "R": result["R"], "Theta": result["Theta"]},
+        inference={"checkpoint": "best", **inference},
+        merge={"mode": inference["mode"], "dilation": inference["dilation"],
+               "prob_thresh": inference["tau"]},
+        postprocess=({"ops": gate.ops(), "min_scar_voxels": gate.min_scar_voxels,
+                      "min_mvo_voxels": gate.min_mvo_voxels, "scar_grow_px": gate.scar_grow_px}
+                     if gate is not None else {"ops": []}),
+        paths={"predictions": str(pred_out.resolve()), "checkpoints": str(model_dir.resolve())},
+        status={"expected_outputs": "oof", "prediction": result["prediction"]},
+    )
 
 
 def predict_oof(

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "run_id": "polar_preds",
+  "description": null,
+  "display_name": null,
+  "tags": [
+    "erase",
+    "polar",
+    "stage2"
+  ],
+  "stage": "stage2",
+  "parent_run": null,
+  "source_run": "nnUNet_validation_501_pp",
+  "model": {
+    "name": "polar_unet",
+    "params": {
+      "in_channels": 1,
+      "num_classes": 5,
+      "use_radius": false,
+      "deep_supervision": true
+    }
+  },
+  "data": {
+    "gt_root": "data://source/emidec/train",
+    "splits_path": "data://splits/emidec-1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b.json",
+    "label_scheme": "flat",
+    "channels": 1,
+    "R": 64,
+    "Theta": 256,
+    "stage1_predictions": "experiments://nnUNet_validation_501/outputs/nnUNet_validation_501_pp/predictions",
+    "splits_sha256": "1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b",
+    "n_folds": 5,
+    "n_cases": 100
+  },
+  "training": {},
+  "inference": {
+    "checkpoint": "best",
+    "mode": "erase",
+    "tau": null,
+    "dilation": 0
+  },
+  "postprocess": {},
+  "merge": {
+    "mode": "erase",
+    "prob_thresh": null,
+    "dilation": 0
+  },
+  "paths": {
+    "predictions": "experiments://polar/outputs/polar_preds/predictions",
+    "metrics": null,
+    "checkpoints": "experiments://polar/checkpoints"
+  },
+  "status": {
+    "expected_outputs": "oof",
+    "prediction": {
+      "pred_dir": "var/polar_preds",
+      "n_expected": 100,
+      "n_present": 100,
+      "missing_cases": [],
+      "per_fold": {
+        "0": {
+          "expected": 20,
+          "present": 20
+        },
+        "1": {
+          "expected": 20,
+          "present": 20
+        },
+        "2": {
+          "expected": 20,
+          "present": 20
+        },
+        "3": {
+          "expected": 20,
+          "present": 20
+        },
+        "4": {
+          "expected": 20,
+          "present": 20
+        }
+      },
+      "ambiguous_folds": [],
+      "splits_sha256": "1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b"
+    }
+  },
+  "provenance": {
+    "legacy": true,
+    "reconstructed": true,
+    "created_at": "2026-10-23T03:20:38Z",
+    "source": "src/rebuild.py",
+    "sources": [
+      "var/polar_preds",
+      "var/polar_models"
+    ],
+    "reconstructed_from": [
+      "prediction/checkpoint directory names",
+      "README.md and NOTES.md",
+      "metrics file",
+      "splits_final.json"
+    ],
+    "note": "Unknown fields are intentionally empty; this manifest was reconstructed from on-disk artifacts, not written at run time."
+  },
+  "eval": {},
+  "alias_of": "polar_preds_add_t0.7"
+}

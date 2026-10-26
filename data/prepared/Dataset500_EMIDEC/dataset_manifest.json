@@ -1,0 +1,6 @@
+{
+  "dataset_id": "Dataset500_EMIDEC",
+  "native_root": "nnunet://nnUNet_raw/Dataset500_EMIDEC",
+  "splits_path": "data://splits/emidec-1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b.json",
+  "splits_sha256": "1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b"
+}

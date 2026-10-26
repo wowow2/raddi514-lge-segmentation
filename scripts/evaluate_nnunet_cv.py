@@ -22,6 +22,7 @@ from src.datautils.emidec_dataset import EMIDECDataset
 from src.datautils.evaluator import DatasetEvaluator
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
+from src.layout import artifact_id
 from src.runs import RunManifest, provenance_now, read_manifest, write_manifest
 
 
@@ -91,7 +92,7 @@ def main(argv=None) -> int:
             metadata={"fold": fold})
 
     parent = read_manifest(pred_dir / "run.json")
-    run_id = args.run_id or parent.get("run_id") or pred_dir.name
+    run_id = args.run_id or parent.get("run_id") or artifact_id(pred_dir)
     report = evaluator.aggregate(run_id=run_id)
     manifest = RunManifest.from_dict(parent)
     manifest.run_id = run_id

@@ -14,6 +14,7 @@ exact split they were trained/evaluated on.
 import hashlib
 import json
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 
 from sklearn.model_selection import StratifiedKFold
@@ -56,7 +57,7 @@ class CVSplits:
 
     Usage::
 
-        splits = CVSplits.load("var/nnUNet_validation/splits_final.json")
+        splits = CVSplits.load("data/splits/emidec-<sha256>.json")
         fold = splits.fold_of("Case_P001")       # accepts either id form
         splits.sha256                            # identity for run comparison
     """
@@ -74,6 +75,10 @@ class CVSplits:
         with open(path) as f:
             folds = json.load(f)
         splits = cls(folds, path=path)
+        if Path(path).name.startswith("emidec-"):
+            expected = Path(path).stem.removeprefix("emidec-")
+            if expected != splits.sha256:
+                raise ValueError(f"Versioned split contents do not match their filename: {path}")
         if validate:
             splits.validate().raise_if_invalid()
         return splits
@@ -241,10 +246,17 @@ class StratifiedFolds:
         path = path or self.path
         if path is None:
             raise ValueError("StratifiedFolds has no output path; pass --path")
+        folds = self.folds if self.folds is not None else self.build()
+        if Path(path).name.startswith("emidec-"):
+            expected = Path(path).stem.removeprefix("emidec-")
+            if CVSplits(folds).sha256 != expected:
+                raise ValueError("Versioned splits are immutable; save changed folds under their new hash")
+            if Path(path).exists():
+                CVSplits.load(path)
+                return str(path)
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w") as f:
-            json.dump(self.folds if self.folds is not None else self.build(),
-                      f, indent=2)
+            json.dump(folds, f, indent=2)
         return path
 
     @classmethod

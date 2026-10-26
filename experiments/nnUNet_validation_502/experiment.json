@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "experiment_id": "nnUNet_validation_502",
+  "outputs": [
+    "nnUNet_validation_502",
+    "nnUNet_validation_502_pp",
+    "nnUNet_validation_502_pp_grow1"
+  ],
+  "default_output": "nnUNet_validation_502_pp",
+  "stage": "stage1",
+  "model": {
+    "name": "nnunet",
+    "trainer": "nnUNetTrainer",
+    "plans": "nnUNetResEncUNetMPlans",
+    "configuration": "2d"
+  }
+}

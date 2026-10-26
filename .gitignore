@@ -5,18 +5,31 @@ venv/
 *.egg-info/
 
 # Large Medical Datasets & Binaries (Do NOT push to GitHub)
-var/emidec_dataset/
-var/nnUNet_raw/
-var/nnUNet_preprocessed/
-var/nnUNet_results/
-var/nnUNet_validation*/
-var/results/*
+/var
 *.nii
 *.nii.gz
 *.mhd
 *.raw
 *.tar.gz
 *.zip
+*.pt
+*.pth
+*.npy
+*.npz
+
+# Canonical storage: keep small portable manifests/splits separate from artifacts.
+/data/source
+/data/nnunet
+/data/migrations
+/data/cache
+/data/archive
+/reports
+/experiments/*/checkpoints
+/experiments/*/outputs/*/predictions
+/experiments/*/outputs/*/probabilities
+/experiments/*/outputs/*/metrics.json
+/experiments/layout.json
+/config/roots.json
 
 # Preprocessed Caches & Outputs
 checkpoints/
@@ -32,12 +45,3 @@ __pycache__/
 # Local config / IDE
 .env
 .idea/
-
-# Small per-run distribution figures linked from NOTES.md (re-included last
-# so this wins over var/results/* and *.png above)
-!var/results/dice_plain.png
-!var/results/dice_resenc.png
-!var/results/dice_regions.png
-!var/results/dice_2.5d.png
-!var/results/dice_distributions.png
-!var/results/dice_cascade.png

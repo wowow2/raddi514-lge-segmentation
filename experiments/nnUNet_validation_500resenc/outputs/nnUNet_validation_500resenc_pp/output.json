@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "run_id": "nnUNet_validation_500resenc_pp",
+  "description": null,
+  "display_name": null,
+  "tags": [
+    "flat",
+    "nnunet",
+    "pp",
+    "resenc",
+    "stage1"
+  ],
+  "stage": "stage1",
+  "parent_run": "nnUNet_validation_500resenc",
+  "source_run": null,
+  "model": {
+    "name": "nnunet",
+    "trainer": "nnUNetTrainer",
+    "plans": "nnUNetResEncUNetMPlans",
+    "configuration": "2d"
+  },
+  "data": {
+    "gt_root": "data://source/emidec/train",
+    "splits_path": "data://splits/emidec-1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b.json",
+    "dataset": "Dataset500_EMIDEC",
+    "label_scheme": "flat",
+    "channels": 1,
+    "splits_sha256": "1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b",
+    "n_folds": 5,
+    "n_cases": 100
+  },
+  "training": {},
+  "inference": {
+    "checkpoint": "best",
+    "probability_space": "native"
+  },
+  "postprocess": {
+    "ops": [
+      {
+        "name": "gate_small_scar",
+        "params": {
+          "min_voxels": 50
+        }
+      },
+      {
+        "name": "grow_scar",
+        "params": {
+          "px": 0
+        }
+      },
+      {
+        "name": "gate_small_mvo",
+        "params": {
+          "min_voxels": 10
+        }
+      },
+      {
+        "name": "enforce_containment",
+        "params": {}
+      }
+    ],
+    "min_scar_voxels": 50,
+    "min_mvo_voxels": 10,
+    "scar_grow_px": 0
+  },
+  "merge": {},
+  "paths": {
+    "predictions": "experiments://nnUNet_validation_500resenc/outputs/nnUNet_validation_500resenc_pp/predictions",
+    "metrics": "experiments://nnUNet_validation_500resenc/outputs/nnUNet_validation_500resenc_pp/metrics.json",
+    "checkpoints": "nnunet://nnUNet_results/Dataset500_EMIDEC/nnUNetTrainer__nnUNetResEncUNetMPlans__2d",
+    "probabilities": "nnunet://nnUNet_results/Dataset500_EMIDEC/probs_nnUNetResEncUNetMPlans_2d"
+  },
+  "status": {
+    "expected_outputs": "oof",
+    "prediction": {
+      "pred_dir": "var/nnUNet_validation_500resenc_pp",
+      "n_expected": 100,
+      "n_present": 100,
+      "missing_cases": [],
+      "per_fold": {
+        "0": {
+          "expected": 20,
+          "present": 20
+        },
+        "1": {
+          "expected": 20,
+          "present": 20
+        },
+        "2": {
+          "expected": 20,
+          "present": 20
+        },
+        "3": {
+          "expected": 20,
+          "present": 20
+        },
+        "4": {
+          "expected": 20,
+          "present": 20
+        }
+      },
+      "ambiguous_folds": [],
+      "splits_sha256": "1c67734e21eda69fd2a1e4de053c3923e72997d554f5d071b0a7ce1a16c7bb8b"
+    }
+  },
+  "provenance": {
+    "legacy": true,
+    "reconstructed": true,
+    "created_at": "2026-10-23T03:20:38Z",
+    "source": "src/rebuild.py",
+    "sources": [
+      "var/nnUNet_validation_500resenc_pp",
+      "var/results/nnunet_500resenc_cv_metrics_pp.json",
+      "var/nnUNet_results/Dataset500_EMIDEC/nnUNetTrainer__nnUNetResEncUNetMPlans__2d"
+    ],
+    "reconstructed_from": [
+      "prediction/checkpoint directory names",
+      "README.md and NOTES.md",
+      "metrics file",
+      "splits_final.json"
+    ],
+    "note": "Unknown fields are intentionally empty; this manifest was reconstructed from on-disk artifacts, not written at run time."
+  },
+  "eval": {}
+}

@@ -1,6 +1,5 @@
 """Cartesian <-> Polar coordinate transformations using PyTorch grid_sample."""
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 

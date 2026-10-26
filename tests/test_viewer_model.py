@@ -1,10 +1,16 @@
 """Headless tests for the Qt viewer's data/rendering layer (no Qt imports)."""
 
 import unittest
+import tempfile
+from collections import OrderedDict
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
 from src.viewer.model import (
+    ViewerModel,
     bootstrap_ci,
     contour_mask,
     derived_channel,
@@ -13,6 +19,7 @@ from src.viewer.model import (
     montage_cols,
     probability_rgba,
 )
+from src.experiment_registry import ArtifactRoots
 
 
 COLORS = {
@@ -80,6 +87,28 @@ class TestChannels(unittest.TestCase):
 
 
 class TestHelpers(unittest.TestCase):
+    def test_canonical_probability_sources_exclude_crops_and_unregistered_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            for name in ("native", "crop", "unregistered"):
+                path = repo / name / "fold_0/validation/example.npz"
+                path.parent.mkdir(parents=True)
+                path.touch()
+            catalog = {"outputs": {name: {
+                "paths": {"probabilities": name},
+                "inference": {"probability_space": space},
+                "data": {"splits_path": "canonical-splits.json"},
+            } for name, space in (("native", "native"), ("crop", "crop"))}}
+            model = ViewerModel.__new__(ViewerModel)
+            model.store = SimpleNamespace(repo_root=repo, artifact_roots=ArtifactRoots(repo))
+            model.prob_sources = OrderedDict()
+            with patch("src.viewer.model.canonical_catalog", return_value=catalog), \
+                 patch("src.viewer.model.ProbIndex") as index:
+                index.return_value.available.return_value = ["example"]
+                model._discover_prob_sources()
+            index.assert_called_once_with(str(repo / "native"), repo / "canonical-splits.json")
+            self.assertEqual(list(model.prob_sources), ["native"])
+
     def test_bootstrap_ci_is_deterministic_and_brackets_mean(self):
         values = [0.1, 0.5, 0.6, 0.7, 0.9]
         first = bootstrap_ci(values, n_boot=200)

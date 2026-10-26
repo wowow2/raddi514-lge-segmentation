@@ -18,11 +18,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.cascade import ExportConfig, export_dataset
-from src.config import DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH
+from src.config import (DEFAULT_GT_ROOT, DEFAULT_SPLITS_PATH, DEFAULT_NNUNET_RAW, artifact_default)
 
 DEFAULT_TASK = "Dataset503_EMIDEC_Cascade"
 DEFAULT_PROB_DIR = (
-    "var/nnUNet_results/Dataset500_EMIDEC/"
+    "nnunet://nnUNet_results/Dataset500_EMIDEC/"
     "probs_nnUNetResEncUNetMPlans_2d_"
     "nnUNetTrainer_probabilisticOversampling"
 )
@@ -30,9 +30,10 @@ DEFAULT_PROB_DIR = (
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Export ROI 3D cascade dataset")
-    parser.add_argument("--out", default="var/nnUNet_raw")
+    parser.add_argument("--out", default=DEFAULT_NNUNET_RAW)
     parser.add_argument("--task-name", default=DEFAULT_TASK)
-    parser.add_argument("--prob-dir", default=DEFAULT_PROB_DIR)
+    parser.add_argument("--prob-dir", default=artifact_default(
+        "nnUNet_validation_500over", "probabilities", DEFAULT_PROB_DIR))
     parser.add_argument("--splits", default=DEFAULT_SPLITS_PATH)
     parser.add_argument("--gt-root", default=DEFAULT_GT_ROOT)
     parser.add_argument("--pad", type=int, default=16,

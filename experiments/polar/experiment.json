@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "experiment_id": "polar",
+  "outputs": [
+    "polar_preds",
+    "polar_preds_d0",
+    "polar_preds_erase"
+  ],
+  "default_output": "polar_preds_erase",
+  "stage": "stage2",
+  "model": {
+    "name": "polar_unet",
+    "params": {
+      "in_channels": 1,
+      "num_classes": 5,
+      "use_radius": false,
+      "deep_supervision": true
+    }
+  }
+}
