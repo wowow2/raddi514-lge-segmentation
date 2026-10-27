@@ -70,7 +70,6 @@ DEFAULT_POLAR_MODEL_DIR: str = str(repo_path("experiments://polar/checkpoints"))
 DEFAULT_TEST_ROOT: str = str(repo_path("data://source/emidec/test"))
 DEFAULT_NNUNET_RAW: str = str(repo_path("nnunet://nnUNet_raw"))
 DEFAULT_REPORT_DIR: str = str(REPO_ROOT / "reports")
-DEFAULT_CACHE_DIR: str = str(repo_path("data://cache"))
 
 
 def nnunet_id_to_case_id(nnunet_id: str) -> str:

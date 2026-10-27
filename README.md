@@ -53,7 +53,7 @@ sample counts, GT-present Dice, and checkpoint provenance, without plots.
 Initially only experiment defaults are visible; uncheck “Show default outputs
 only” to see the other retained views.
 Regenerate after updating metadata or metrics. Reports and viewer exports go
-to ignored `reports/`; case metadata caches go to ignored `data/cache/`.
+to ignored `reports/`; culled artifacts go to ignored `data/archive/`.
 See [`READINGS.md`](READINGS.md) for references.
 
 ## Experiment metadata
@@ -80,16 +80,9 @@ Every step contributes what it knows:
 Unknown values are stored as `null` and never guessed. Discovery reads only
 canonical experiment/output JSON. Local `var/` paths and migration/reconstruction
 commands have been retired. Unverified historical files are retained in ignored
-`data/archive/`; Fir's existing launch paths remain intact. Attach explicit
-metadata when you know it:
-
-```bash
-python scripts/runs.py register nnUNet_validation_501_pp \
-  --predictions experiments/nnUNet_validation_501/outputs/nnUNet_validation_501_pp/predictions \
-  --metrics experiments/nnUNet_validation_501/outputs/nnUNet_validation_501_pp/metrics.json \
-  --model nnunet --stage stage1 --tags regions,baseline \
-  --description "ResEnc-M, region labels, scar/MVO gates"
-```
+`data/archive/`; Fir's existing launch paths remain intact. Pipeline steps
+write their own `run.json`/`output.json`; there is no separate registration
+command.
 
 Older metrics files (`per_case` lists with nested `dice`/`hd95`) stay readable;
 they are converted to rows on load, and fields that cannot be recovered (TP,
@@ -101,12 +94,11 @@ FP, FN, predicted volumes) remain unknown.
 python scripts/runs.py list
 python scripts/runs.py list --tag baseline --model nnunet
 python scripts/runs.py show nnUNet_validation_501_pp
-python scripts/runs.py validate --all              # missing cases/folds, conflicts
+python scripts/runs.py validate                   # split hashes + missing folds/cases
 python scripts/runs.py results --all --class-name Scar --gt-present
 python scripts/runs.py results --all --pred-empty  # empty predictions (score failures)
 python scripts/runs.py compare --all --metric dice --require-same-cases
 python scripts/runs.py compare --all --metric hd95 --case-set intersection --csv /tmp/cmp.csv
-python scripts/runs.py cases
 ```
 
 Both `results` and `compare` share a flag vocabulary for choosing runs: `--tag`,
@@ -118,8 +110,7 @@ per-case folds disagree. In its output, `missing` counts selected cases that a
 run lacks, and `excluded` counts cases the run has but that fall outside the
 comparison set. `--require-same-cases` rejects runs with non-identical case
 sets. `--allow-mixed-splits` is only for when you intentionally ignore
-differing `data.splits_sha256` values. Conflicting manifests are rejected by
-`compare` and flagged by `validate` and `show`.
+differing `data.splits_sha256` values; otherwise `compare` refuses them.
 
 `results` prints one row per case, fold, and class. Beyond
 `--class-name`/`--gt-present` it takes:
@@ -132,11 +123,6 @@ differing `data.splits_sha256` values. Conflicting manifests are rejected by
 
 Write the full row set with `--csv <file>`; `--limit` and `--print-all`
 control the terminal view.
-
-`cases` builds a case metadata cache (`src/datautils/case_metadata.py`):
-per-case image and spacing geometry plus ground-truth class volumes, read
-directly from the NIfTI files. Useful for overlays and reports without a full
-evaluation.
 
 Python access:
 
@@ -198,8 +184,9 @@ without `--val_best` contain final-model predictions and must not be relabelled
 as best-checkpoint outputs.
 
 For Dataset503, the current baseline is **`503_best_pp`**.
-The viewer prefers this run when available. `503_3d_pp` is the historical final
-checkpoint comparison, retained separately. `fir/evaluate.sh 503`
+The viewer prefers this run when available. Historical final-checkpoint views
+(`503_3d`, `503_3d_pp`, `503_3d_raw`) and the dangling `polar_preds` alias are
+archived under `data/archive/`. `fir/evaluate.sh 503`
 regenerates best-checkpoint OOF predictions in a separate directory, scores raw
 and gated outputs, and records `inference.checkpoint = "best"`. This runs CPU
 inference with an eight-hour allocation; existing evaluated local best outputs
@@ -222,7 +209,7 @@ bash fir/evaluate.sh 503 --plans=nnUNetPrimusV3SPlans --tr=nnUNet_PrimusV3S_Trai
 New training jobs write native nnU-Net directories selected by dataset, trainer,
 plans and configuration. They do not appear automatically in the local report.
 After completion, import their outputs locally, restore crop-space labels,
-evaluate raw and postprocessed predictions, and register each model as a separate
+evaluate raw and postprocessed predictions, and record each model as a separate
 canonical experiment with its own default output. Regenerate the HTML report
 after registration; preserve the existing BEST/FINAL baseline outputs.
 
@@ -275,5 +262,5 @@ after registration; preserve the existing BEST/FINAL baseline outputs.
 
 ```bash
 .venv/bin/python -m unittest discover -s tests
-.venv/bin/python scripts/runs.py validate --all
+.venv/bin/python scripts/runs.py validate
 ```

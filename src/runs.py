@@ -22,22 +22,12 @@ from src.experiment_registry import ArtifactRoots, catalog_views
 from src.layout import canonical_catalog, write_output
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
-from src.results import Comparison, ResultsTable, compare
+from src.results import ResultsTable
 
 SCHEMA_VERSION = 1
 
 SECTIONS = ("model", "data", "training", "inference", "postprocess",
             "merge", "paths", "status", "provenance", "eval")
-
-IDENTITY_PATHS = (
-    "stage", "model.name", "model.params",
-    "data.splits_sha256", "data.label_scheme", "data.channels",
-)
-
-ESSENTIAL_UNKNOWN = (
-    "model.name", "data.splits_sha256", "training.seed",
-    "paths.predictions", "paths.metrics",
-)
 
 
 def _now() -> str:
@@ -107,25 +97,6 @@ def provenance_now(command: str | None = None) -> dict:
         "host": socket.gethostname(),
         "packages": packages,
     }
-
-
-def _empty_list(value: Any) -> bool:
-    return value is None or value == "" or value == [] or value == {}
-
-
-def _merge_value(primary: Any, secondary: Any) -> Any:
-    if isinstance(primary, dict) and isinstance(secondary, dict):
-        return _merge_dicts(primary, secondary)
-    if isinstance(primary, list) and isinstance(secondary, list):
-        return primary or secondary
-    return primary if primary is not None else secondary
-
-
-def _merge_dicts(primary: dict, secondary: dict) -> dict:
-    merged = dict(secondary)
-    for key, value in primary.items():
-        merged[key] = _merge_value(value, secondary.get(key)) if key in secondary else value
-    return merged
 
 
 @dataclass
@@ -202,34 +173,6 @@ class RunManifest:
     @property
     def legacy(self) -> bool:
         return bool(self.provenance.get("legacy"))
-
-    def identity_conflicts(self, other: "RunManifest") -> list[dict]:
-        """Identity fields that disagree between two manifests for one run."""
-        conflicts = []
-        for path in IDENTITY_PATHS:
-            left, right = self.get(path), other.get(path)
-            if left is None or right is None:
-                continue
-            if left != right:
-                conflicts.append({"field": path, "kept": left, "other": right})
-        return conflicts
-
-    def missing_fields(self) -> list[str]:
-        return [key for key in ESSENTIAL_UNKNOWN if _empty_list(self.get(key))]
-
-    def merged_with(self, other: "RunManifest") -> "RunManifest":
-        """Return a new manifest where ``self`` wins over ``other``."""
-        merged = RunManifest(run_id=self.run_id)
-        for name in ("schema_version",):
-            setattr(merged, name, max(self.schema_version, other.schema_version))
-        for name in ("description", "display_name", "stage", "parent_run", "source_run"):
-            setattr(merged, name, _merge_value(getattr(self, name), getattr(other, name)))
-        merged.tags = sorted(set(self.tags) | set(other.tags))
-        for section in SECTIONS:
-            setattr(merged, section, _merge_dicts(
-                getattr(self, section), getattr(other, section)))
-        merged.extra = _merge_dicts(self.extra, other.extra)
-        return merged
 
 
 class Run:
@@ -324,76 +267,49 @@ class Run:
         return None
 
     # -------------------------------------------------------------- status
-    def status(self) -> dict:
-        info: dict[str, Any] = {
-            "run_id": self.run_id,
-            "legacy": self.manifest.legacy,
-            "manifest_conflicts": list(
-                self.manifest.provenance.get("merge_conflicts") or []),
-            "has_metrics": self.metrics_path is not None and self.metrics_path.exists(),
-            "checkpoints": {},
-            "prediction": None,
-            "split_errors": [],
-            "split_warnings": [],
-        }
-        splits = self.splits()
-        if splits is not None:
-            validation = splits.validate()
-            info["split_errors"] = validation.errors
-            info["split_warnings"] = validation.warnings
-            recorded = self.manifest.get("data.splits_sha256")
-            if recorded and recorded != splits.sha256:
-                info["split_errors"].append(
-                    "recorded splits hash does not match the splits file "
-                    f"({recorded[:8]} vs {splits.sha256[:8]})")
-
+    def is_complete(self) -> bool | None:
+        """OOF coverage; ``None`` when the split or predictions are unknown."""
         index = self.prediction_index()
-        if index is not None:
-            summary = index.summary()
-            info["prediction"] = summary
-            info["n_present"] = summary["n_present"]
-            if index.splits is None:
-                # Legacy directory without a split: expected coverage unknown.
-                info["n_expected"] = None
-                info["missing_cases"] = []
-                info["complete"] = None
-            else:
-                info["n_expected"] = summary["n_expected"]
-                info["missing_cases"] = summary["missing_cases"]
-                info["complete"] = (None if summary["n_expected"] == 0
-                                    else summary["n_present"] == summary["n_expected"])
-        else:
-            info["n_expected"] = None
-            info["n_present"] = None
-            info["complete"] = None
+        if index is None or index.splits is None:
+            return None
+        summary = index.summary()
+        if summary["n_expected"] == 0:
+            return None
+        return summary["n_present"] == summary["n_expected"]
 
-        prob_index = self.probability_index()
-        info["probabilities"] = (prob_index.summary()
-                                 if prob_index is not None else None)
-
-        n_folds = len(splits.folds) if splits is not None else 5
-        for fold in range(n_folds):
-            info["checkpoints"][fold] = self.checkpoint(fold) is not None
-
-        info["fully_tracked"] = not self.manifest.missing_fields()
-        return info
+    def status_summary(self) -> dict:
+        splits = self.splits()
+        index = self.prediction_index()
+        return {
+            "has_metrics": self.metrics_path is not None and self.metrics_path.exists(),
+            "prediction": index.summary() if index is not None else None,
+            "split_hash_match": (splits is None or
+                                 self.manifest.get("data.splits_sha256") in (None, splits.sha256)),
+            "checkpoints": {fold: self.checkpoint(fold) is not None
+                            for fold in range(len(splits.folds) if splits else 5)},
+            "legacy": self.manifest.legacy,
+        }
 
     def summary_row(self) -> dict:
-        status = self.status()
+        index = self.prediction_index()
+        if index is None:
+            cases = "?"
+        else:
+            summary = index.summary()
+            cases = (f"{summary['n_present']}/{summary['n_expected']}"
+                     if index.splits is not None else f"{summary['n_present']}/?")
+        splits = self.splits()
+        n_folds = len(splits.folds) if splits is not None else 5
         return {
             "run_id": self.run_id,
             "stage": self.manifest.stage or "?",
             "model": self.manifest.get("model.name") or "?",
             "tags": ",".join(self.manifest.tags),
             "split": (self.manifest.get("data.splits_sha256") or "?")[:8],
-            "checkpoints": f"{sum(status['checkpoints'].values())}/{len(status['checkpoints'])}",
-            "cases": (f"{status['n_present']}/{status['n_expected']}"
-                      if status["n_expected"] is not None
-                      else (f"{status['n_present']}/?" if status["n_present"] is not None
-                            else "?")),
-            "metrics": "yes" if status["has_metrics"] else "no",
-            "legacy": "yes" if status["legacy"] else "no",
-            "conflict": "yes" if status["manifest_conflicts"] else "no",
+            "checkpoints": f"{sum(self.checkpoint(f) is not None for f in range(n_folds))}/{n_folds}",
+            "cases": cases,
+            "metrics": "yes" if self.metrics_path is not None and self.metrics_path.exists() else "no",
+            "legacy": "yes" if self.manifest.legacy else "no",
         }
 
     def __repr__(self) -> str:
@@ -448,67 +364,15 @@ class RunStore:
             runs = [r for r in runs if _matches(r, key, expected)]
         return runs
 
-    # ------------------------------------------------------------- register
-    def register(self, run_id: str, **fields: Any) -> Run:
-        """Register or update a canonical output, rejecting identity conflicts."""
-        (self.repo_root / "experiments").mkdir(parents=True, exist_ok=True)
-        catalog = canonical_catalog(self.repo_root)
-        existing = (RunManifest.from_dict(catalog["outputs"][run_id])
-                    if run_id in catalog["outputs"] else None)
-        manifest = RunManifest.from_dict({"run_id": run_id, **fields})
-        if existing is not None:
-            conflicts = manifest.identity_conflicts(existing)
-            if conflicts:
-                detail = "; ".join(
-                    f"{c['field']}: {c['kept']!r} vs {c['other']!r}"
-                    for c in conflicts)
-                raise ValueError(
-                    f"Refusing to register {run_id}: identity conflicts with "
-                    f"canonical metadata ({detail})")
-            manifest = manifest.merged_with(existing)
-        destination = write_output(self.repo_root, manifest.to_dict())
-        self._runs = None
-        return Run(manifest, self, sources=[destination])
-
-    # -------------------------------------------------------------- compare
-    def compare(self, run_ids: Iterable[str] | None = None, metric: str = "dice",
-                case_set: str = "intersection",
-                require_same_cases: bool = False,
-                check_splits: bool = True) -> Comparison:
-        runs = self.select(run_ids)
-        conflicted = [r.run_id for r in runs
-                      if r.manifest.provenance.get("merge_conflicts")]
-        if conflicted:
-            raise ValueError(
-                "Conflicting manifests for: " + ", ".join(conflicted)
-                + " (see `scripts/runs.py show <run>` for source files)")
-        if check_splits:
-            hashes = {r.run_id: r.manifest.get("data.splits_sha256")
-                      for r in runs}
-            known = {h for h in hashes.values() if h}
-            if len(known) > 1:
-                detail = ", ".join(f"{k}={v[:8]}" for k, v in hashes.items() if v)
-                raise ValueError(f"Runs used different splits: {detail}")
-
-        tables: dict[str, ResultsTable] = {}
-        for run in runs:
-            table = run.load_metrics()
-            if table is None:
-                raise FileNotFoundError(f"{run.run_id} has no metrics file")
-            tables[run.run_id] = table
-        return compare(tables, metric=metric, case_set=case_set,
-                       require_same_cases=require_same_cases)
-
-
 def _matches(run: Run, key: str, expected: Any) -> bool:
     if key == "model":
         key = "model.name"
     if key == "tag":
         return expected in run.manifest.tags
     if key == "complete":
-        return run.status()["complete"] is bool(expected)
+        return run.is_complete() is bool(expected)
     if key == "has_metrics":
-        return run.status()["has_metrics"] is bool(expected)
+        return (run.metrics_path is not None and run.metrics_path.exists()) is bool(expected)
     if key == "legacy":
         return run.manifest.legacy is bool(expected)
     value = run.manifest.get(key)

@@ -2,7 +2,6 @@
   "schema_version": 1,
   "experiment_id": "polar",
   "outputs": [
-    "polar_preds",
     "polar_preds_d0",
     "polar_preds_erase"
   ],

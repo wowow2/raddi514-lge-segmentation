@@ -5,11 +5,10 @@ Examples::
     python scripts/runs.py list
     python scripts/runs.py list --tag baseline --model polar_unet
     python scripts/runs.py show polar_add_r64_pp
-    python scripts/runs.py validate --all
+    python scripts/runs.py validate
     python scripts/runs.py results --all --class-name Scar --gt-present
     python scripts/runs.py compare --all --metric dice --require-same-cases
     python scripts/runs.py compare 501_regions_pp polar_add_r64_pp --csv /tmp/cmp.csv
-    python scripts/runs.py cases --out data/cache/case_metadata.json
 """
 
 import argparse
@@ -19,8 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import DEFAULT_GT_ROOT, DEFAULT_CACHE_DIR
-from src.results import ResultsTable
+from src.results import ResultsTable, compare
 from src.runs import RunStore
 
 
@@ -64,85 +62,22 @@ def cmd_list(args) -> int:
 
 
 def cmd_show(args) -> int:
-    store = _store(args)
-    run = store.get(args.run_id)
+    run = _store(args).get(args.run_id)
     print(json.dumps(run.manifest.to_dict(), indent=2))
-    status = run.status()
     print("\nStatus:")
-    print(json.dumps(status, indent=2, default=str))
-    missing = run.manifest.missing_fields()
-    if missing:
-        print("\nUnknown fields: " + ", ".join(missing), file=sys.stderr)
+    print(json.dumps(run.status_summary(), indent=2, default=str))
     return 0
 
 
 def cmd_validate(args) -> int:
-    store = _store(args)
-    runs = store.select(args.runs or None)
-    if not runs and not args.runs:
-        runs = store.discover()
-    failed = False
-    for run in runs:
-        status = run.status()
-        problems = list(status["split_errors"])
-        if status["prediction"] is not None:
-            if status["missing_cases"]:
-                shown = ", ".join(status["missing_cases"][:5])
-                suffix = "" if len(status["missing_cases"]) <= 5 else ", ..."
-                problems.append(
-                    f"{len(status['missing_cases'])} missing prediction file(s) "
-                    f"({shown}{suffix})")
-        elif run.pred_dir is not None:
-            problems.append(f"prediction directory not found: {run.pred_dir}")
-        for conflict in status["manifest_conflicts"]:
-            problems.append(
-                f"conflicting manifests for {conflict['field']}: keeping "
-                f"{conflict['kept']!r}, other source has {conflict['other']!r} "
-                f"(sources: {', '.join(conflict.get('sources', []))})")
-        if status["legacy"]:
-            if run.manifest.get("provenance.reconstructed"):
-                problems.append("legacy run: reconstructed; training metadata unknown")
-            else:
-                problems.append("legacy run: model/data/training metadata unknown")
-        print(f"[{run.run_id}]")
-        if problems:
-            failed = failed or any(not p.startswith("legacy run") for p in problems)
-            for problem in problems:
-                print(f"  - {problem}")
-        else:
-            print("  ok")
-        for warning in status["split_warnings"]:
-            print(f"  warning: {warning}")
-        if args.strict and not status["fully_tracked"]:
-            print("  - incomplete metadata: " + ", ".join(run.manifest.missing_fields()))
-            failed = True
-    return 1 if failed else 0
+    from src.layout import check_outputs
 
-
-def cmd_register(args) -> int:
-    store = _store(args)
-    paths = {}
-    for key, value in (("predictions", args.predictions),
-                       ("probabilities", args.probabilities),
-                       ("checkpoints", args.checkpoints),
-                       ("metrics", args.metrics)):
-        if value:
-            paths[key] = str(Path(value).resolve())
-    fields = {
-        "description": args.description,
-        "display_name": args.display_name,
-        "tags": [t for t in (args.tags or "").split(",") if t],
-        "stage": args.stage,
-        "parent_run": args.parent,
-        "source_run": args.source,
-        "paths": paths,
-    }
-    if args.model:
-        fields["model"] = {"name": args.model}
-    if args.extra:
-        fields.update(json.loads(args.extra))
-    run = store.register(args.run_id, **fields)
-    print(f"registered {run.run_id} -> {run.sources[0]}")
+    try:
+        experiments, outputs = check_outputs(Path(__file__).resolve().parent.parent)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}")
+        return 1
+    print(f"ok: {experiments} experiments, {outputs} outputs")
     return 0
 
 
@@ -229,11 +164,23 @@ def cmd_compare(args) -> int:
             print(f"warning: no metrics for {', '.join(skipped)}; skipped",
                   file=sys.stderr)
         run_ids = [r.run_id for r in selected]
+    runs = store.select(run_ids)
+    if not args.allow_mixed_splits:
+        hashes = {run.run_id: run.manifest.get("data.splits_sha256") for run in runs}
+        known = {value for value in hashes.values() if value}
+        if len(known) > 1:
+            detail = ", ".join(f"{k}={v[:8]}" for k, v in hashes.items() if v)
+            raise SystemExit(f"Runs used different splits: {detail}")
+    tables: dict[str, ResultsTable] = {}
+    for run in runs:
+        table = run.load_metrics()
+        if table is None:
+            raise SystemExit(f"{run.run_id} has no metrics file")
+        tables[run.run_id] = table
     try:
-        comparison = store.compare(
-            run_ids, metric=args.metric, case_set=args.case_set,
-            require_same_cases=args.require_same_cases,
-            check_splits=not args.allow_mixed_splits)
+        comparison = compare(
+            tables, metric=args.metric, case_set=args.case_set,
+            require_same_cases=args.require_same_cases)
     except (KeyError, FileNotFoundError, ValueError) as exc:
         raise SystemExit(str(exc))
     print(comparison.to_markdown())
@@ -251,16 +198,6 @@ def cmd_compare(args) -> int:
                   f"({', '.join(ids[:5])}{'...' if len(ids) > 5 else ''})")
     if args.csv:
         print(f"\nwrote -> {comparison.to_csv(args.csv)}")
-    return 0
-
-
-def cmd_cases(args) -> int:
-    from src.datautils.case_metadata import save_case_metadata
-    from src.datautils.emidec_dataset import EMIDECDataset
-
-    dataset = EMIDECDataset(args.gt_root)
-    path = save_case_metadata(args.out, dataset)
-    print(f"wrote {len(dataset)} cases -> {path}")
     return 0
 
 
@@ -288,27 +225,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("run_id")
     p.set_defaults(func=cmd_show)
 
-    p = sub.add_parser("validate", help="check completeness and split validity")
-    p.add_argument("runs", nargs="*")
-    p.add_argument("--all", action="store_true", help="check every discovered run")
-    p.add_argument("--strict", action="store_true")
+    p = sub.add_parser("validate", help="check every output's split and OOF coverage")
+    p.add_argument("--all", action="store_true", help="accepted for compatibility")
     p.set_defaults(func=cmd_validate)
-
-    p = sub.add_parser("register", help="attach metadata to an existing run")
-    p.add_argument("run_id")
-    p.add_argument("--predictions")
-    p.add_argument("--probabilities")
-    p.add_argument("--checkpoints")
-    p.add_argument("--metrics")
-    p.add_argument("--model")
-    p.add_argument("--stage", choices=["stage1", "stage2"])
-    p.add_argument("--tags")
-    p.add_argument("--description")
-    p.add_argument("--display-name")
-    p.add_argument("--parent")
-    p.add_argument("--source")
-    p.add_argument("--extra", help="JSON object merged into the manifest")
-    p.set_defaults(func=cmd_register)
 
     p = sub.add_parser("results", help="print/filter tidy result rows")
     add_selection(p)
@@ -342,11 +261,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--allow-mixed-splits", action="store_true")
     p.add_argument("--csv")
     p.set_defaults(func=cmd_compare)
-
-    p = sub.add_parser("cases", help="write case-level dataset metadata")
-    p.add_argument("--gt-root", default=DEFAULT_GT_ROOT)
-    p.add_argument("--out", default=str(Path(DEFAULT_CACHE_DIR) / "case_metadata.json"))
-    p.set_defaults(func=cmd_cases)
     return parser
 
 

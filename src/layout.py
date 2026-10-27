@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import re
 import shutil
@@ -29,35 +28,6 @@ def safe_id(value):
     if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value):
         raise ValueError(f"Invalid experiment/output ID: {value!r}")
     return value
-
-
-def split_identity(path, expected_folds=5, expected_cases=100):
-    """Same hash as CVSplits.sha256; fold order and list order are preserved."""
-    folds = read_json(path)
-    if not isinstance(folds, list) or len(folds) != expected_folds:
-        raise ValueError(f"Expected {expected_folds} folds: {path}")
-    universe = set()
-    validation = []
-    normalized = []
-    for fold in folds:
-        train = [case.replace("Case_", "EMIDEC_") for case in fold["train"]]
-        val = [case.replace("Case_", "EMIDEC_") for case in fold["val"]]
-        if not val or len(set(train)) != len(train) or len(set(val)) != len(val):
-            raise ValueError(f"Empty validation fold or duplicate IDs: {path}")
-        if set(train) & set(val):
-            raise ValueError(f"Train/validation leakage: {path}")
-        universe.update(train + val)
-        validation.extend(val)
-        normalized.append((set(train), set(val)))
-    if len(universe) != expected_cases or len(validation) != len(set(validation)):
-        raise ValueError(f"Expected {expected_cases} unique cases held out once: {path}")
-    for train, val in normalized:
-        if train | val != universe:
-            raise ValueError(f"Fold does not contain the complete cohort: {path}")
-    if set(validation) != universe:
-        raise ValueError(f"Some cases are never held out: {path}")
-    encoded = json.dumps(folds, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode()).hexdigest(), folds
 
 
 def canonical_catalog(repo):
@@ -113,6 +83,8 @@ def artifact_id(value, repo=None):
 
 def write_output(repo, manifest):
     """Write canonical metadata when experiment storage exists, otherwise return False."""
+    from src.datautils.splits import CVSplits
+
     repo = Path(repo)
     catalog = canonical_catalog(repo)
     if catalog is None:
@@ -146,14 +118,14 @@ def write_output(repo, manifest):
     split_path = data.get("splits_path")
     if split_path:
         source = roots.resolve(split_path)
-        digest, _ = split_identity(source)
+        digest = CVSplits.load(source).sha256
         if data.get("splits_sha256") not in (None, digest):
             raise ValueError(f"Split hash mismatch for {name}")
         canonical = repo / "data/splits" / f"emidec-{digest}.json"
         canonical.parent.mkdir(parents=True, exist_ok=True)
         if not canonical.exists():
             shutil.copy2(source, canonical)
-        if split_identity(canonical)[0] != digest:
+        if CVSplits.load(canonical).sha256 != digest:
             raise ValueError(f"Canonical split changed: {canonical}")
         data.update(splits_path=f"data://splits/{canonical.name}", splits_sha256=digest)
     for key in ("gt_root", "stage1_predictions"):
@@ -177,7 +149,10 @@ def write_output(repo, manifest):
     return path.parent / "outputs" / name / "output.json"
 
 
-def verify_outputs(repo, registry=None, roots=None):
+def check_outputs(repo, registry=None, roots=None):
+    """Raise on split drift or missing OOF predictions/probabilities/metrics."""
+    from src.datautils.splits import CVSplits
+
     repo = Path(repo)
     registry = registry if registry is not None else canonical_catalog(repo)
     if registry is None:
@@ -185,23 +160,18 @@ def verify_outputs(repo, registry=None, roots=None):
     roots = roots or ArtifactRoots(repo)
     for name, output in registry["outputs"].items():
         data = output["data"]
-        digest, folds = split_identity(roots.resolve(data["splits_path"]))
-        if digest != data.get("splits_sha256"):
+        splits = CVSplits.load(roots.resolve(data["splits_path"]))
+        if splits.sha256 != data.get("splits_sha256"):
             raise ValueError(f"Split hash mismatch: {name}")
-        predictions = roots.resolve(output.get("paths", {}).get("predictions"))
-        if predictions is not None:
-            for fold, split in enumerate(folds):
-                for case in split["val"]:
-                    case = case.replace("Case_", "EMIDEC_")
-                    if not (predictions / f"fold_{fold}/validation/{case}.nii.gz").is_file():
-                        raise ValueError(f"Missing OOF prediction: {name}/fold_{fold}/{case}")
-        probabilities = roots.resolve(output.get("paths", {}).get("probabilities"))
-        if probabilities is not None:
-            for fold, split in enumerate(folds):
-                for case in split["val"]:
-                    case = case.replace("Case_", "EMIDEC_")
-                    if not (probabilities / f"fold_{fold}/validation/{case}.npz").is_file():
-                        raise ValueError(f"Missing OOF probability: {name}/fold_{fold}/{case}")
+        for fold, split in enumerate(splits.folds):
+            for case in split["val"]:
+                case = case.replace("Case_", "EMIDEC_")
+                predictions = roots.resolve(output.get("paths", {}).get("predictions"))
+                if predictions is not None and not (predictions / f"fold_{fold}/validation/{case}.nii.gz").is_file():
+                    raise ValueError(f"Missing OOF prediction: {name}/fold_{fold}/{case}")
+                probabilities = roots.resolve(output.get("paths", {}).get("probabilities"))
+                if probabilities is not None and not (probabilities / f"fold_{fold}/validation/{case}.npz").is_file():
+                    raise ValueError(f"Missing OOF probability: {name}/fold_{fold}/{case}")
         metrics = roots.resolve(output.get("paths", {}).get("metrics"))
         if metrics is not None and not metrics.is_file():
             raise ValueError(f"Missing metrics: {name}: {metrics}")
