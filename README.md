@@ -13,26 +13,29 @@ scar, and MVO. Models are evaluated with 5-fold out-of-fold Dice and HD95.
 4. Anatomical postprocessing: small-lesion gates, scar growth, and MVO
    containment.
 
-Current best OOF result: `503_best_pp` (Dice 0.8035).
+Current best OOF run: `503_best_pp`.
 
 ## Repository layout
 
 ```text
 src/
   config.py          storage roots and environment paths
-  datautils/         EMIDEC loading, splits, metrics, postprocessing, nnU-Net export
+  datautils/         EMIDEC loading, splits, predictions, metrics, postprocessing,
+                     nnU-Net export
   cascade/           ROI geometry, channel export, cascade merge
   polar/             polar transform, U-Net, training, prediction, merge
-  runs.py            canonical experiment/output discovery and validation
-  layout.py          artifact paths, IDs, output checks
-  results.py         tidy per-case/per-class metrics and run comparison
+  analysis/          out-of-fold probability loading
+  plotter/           report plots
   viewer/            PyQt5 case explorer (Explore, Metrics, Compare)
-scripts/             CLI entry points (export, train, predict, evaluate, report)
+  experiment_registry.py  artifact roots and catalog views
+  layout.py          artifact paths, IDs, metadata catalog, output checks
+  runs.py            experiment/output discovery and run queries
+  results.py         tidy per-case/per-class metrics and run comparison
+  reporting.py       HTML report generation
+scripts/             CLI entry points (export, merge, train/predict, evaluate, report)
 fir/                 SLURM scripts for the Fir cluster
-nibi/                SLURM scripts for the Nibi cluster
 experiments/         experiment.json plus outputs/<output>/output.json
-config/              roots.json and repository layout
-data/                raw data, splits, preprocessed data, archives (ignored)
+data/                local datasets and splits; large artifacts ignored
 tests/               standard-library unittest suite
 ```
 
