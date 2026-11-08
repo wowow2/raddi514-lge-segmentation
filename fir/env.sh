@@ -14,6 +14,7 @@ export nnUNet_raw=$FIR_BASE/emidec_nnunet/nnUNet_raw
 export nnUNet_preprocessed=$FIR_BASE/emidec_nnunet/nnUNet_preprocessed
 export nnUNet_results=$FIR_BASE/emidec_nnunet/nnUNet_results
 export nnUNet_compile=false
+export TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1
 
 module load StdEnv/2023 python/3.11 cuda 2>/dev/null \
   || module load StdEnv/2023 python/3.11

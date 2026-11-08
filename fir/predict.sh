@@ -48,7 +48,8 @@ EXTRA_LINES=""
 if [[ "$CPU" -eq 1 ]]; then
   CPUS=$((PARTS * 4)); [[ "$CPUS" -lt 8 ]] && CPUS=8
   MEM=$((PARTS * 8)); [[ "$MEM" -lt 32 ]] && MEM=32
-  RES_LINES="#SBATCH --cpus-per-task=${CPUS}
+  RES_LINES="#SBATCH --partition=cpubase_bycore_b3
+#SBATCH --cpus-per-task=${CPUS}
 #SBATCH --mem=${MEM}G"
   TIME="${TIME:-08:00:00}"
   DEVICE_ARGS="-device cpu"
