@@ -5,6 +5,7 @@ The spatial transpose below was verified against the exported .nii.gz labels
 (argmax match = 1.0), so ``load`` returns (C, X, Y, Z) aligned with the GT.
 """
 
+import json
 from pathlib import Path
 
 import nibabel as nib
@@ -14,6 +15,7 @@ from src.config import (
     DEFAULT_SPLITS_PATH,
     repo_path,
 )
+from src.datautils.emidec_dataset import EMIDECDataset
 from src.datautils.predictions import CVPredictionIndex
 from src.datautils.splits import CVSplits
 
@@ -47,3 +49,37 @@ class ProbIndex:
         if lab.shape != prob.shape[1:]:
             return 0.0
         return float((prob.argmax(0) == lab).mean())
+
+
+class CascadeProbIndex:
+    """Load crop-space 503 probabilities and paste them into full-volume space."""
+
+    def __init__(self, prob_dir: str, manifest_path: str, gt_root: str,
+                 splits_path: str = DEFAULT_SPLITS_PATH):
+        self.prob_dir = str(repo_path(prob_dir))
+        self.index = CVPredictionIndex(
+            self.prob_dir, CVSplits.load(splits_path), suffix=".npz")
+        manifest = json.loads(Path(repo_path(manifest_path)).read_text())
+        self.boxes = {entry["case_id"]: entry["bbox"]
+                      for entry in manifest.get("cases", [])}
+        self.dataset = EMIDECDataset(str(repo_path(gt_root)))
+        self._shapes: dict[str, tuple[int, int, int]] = {}
+
+    def available(self) -> list[str]:
+        return [cid for cid in self.index.available() if cid in self.boxes]
+
+    def load(self, case_id: str) -> np.ndarray:
+        ref = self.index.ref(case_id)
+        crop = np.load(ref.path)["probabilities"]  # (C, Z, Y, X)
+        crop_xyz = np.ascontiguousarray(
+            crop.transpose(0, 3, 2, 1), dtype=np.float32)
+        if case_id not in self._shapes:
+            image, _ = self.dataset.get(case_id).load()
+            self._shapes[case_id] = image.shape
+        shape = self._shapes[case_id]
+        full = np.zeros((crop_xyz.shape[0], *shape), dtype=np.float32)
+        box = self.boxes[case_id]
+        x0, x1 = int(box["x0"]), int(box["x1"])
+        y0, y1 = int(box["y0"]), int(box["y1"])
+        full[:, x0:x1, y0:y1, :] = crop_xyz
+        return full

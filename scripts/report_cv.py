@@ -31,6 +31,10 @@ def parse_args(argv=None):
                         help="load prediction volumes for the worst-slice column")
     parser.add_argument("--from-images", action="store_true",
                         help="compute Dice from NIfTIs instead of saved metrics")
+    parser.add_argument("--case-gallery", action="store_true",
+                        help="render image/contour percentile galleries")
+    parser.add_argument("--reliability", action="store_true",
+                        help="render probability reliability curves")
     parser.add_argument("--no-bad-table", action="store_true")
     return parser.parse_args(argv)
 
@@ -51,7 +55,11 @@ def main(argv=None) -> int:
         from src.reporting import write_experiment_report
         print(write_experiment_report(REPO_ROOT, repo_path(args.html)))
         return 0
-    from src.plotter import BadPerformersTable, CVData, DiceDistributionPlot
+    from src.plotter import (
+        BadPerformersTable, CVData, DiceDistributionPlot,
+        PercentileCaseGallery, PercentileWindowPlot, ReliabilityPlot,
+        SummaryBarsPlot,
+    )
     splits_path = repo_path(args.splits)
     gt_root = repo_path(args.gt_root)
     store = RunStore(splits_path=splits_path)
@@ -96,7 +104,49 @@ def main(argv=None) -> int:
 
     plot.save(str(out_dir / "dice_distributions.png"))
     plot.save_by_run(str(out_dir), prefix="dice")
+    if used_metrics:
+        PercentileWindowPlot(display).save(
+            str(out_dir / "percentile_windows.png"))
+        SummaryBarsPlot(display).save(str(out_dir / "metric_bars.png"))
 
+    image_cv = None
+    if args.images or args.from_images or not used_metrics or args.case_gallery:
+        selected = [r for r in runs if r.pred_dir is not None]
+        pairs = [(run_names.get(r.run_id, r.run_id), str(r.pred_dir))
+                 for r in selected]
+        if not pairs:
+            raise SystemExit("image plots require prediction directories")
+        image_cv = CVData(gt_root, splits_path, pairs)
+
+    if args.case_gallery:
+        gallery = PercentileCaseGallery(image_cv)
+        gallery.save(3, str(out_dir / "percentile_cases_scar.png"))
+        gallery.save(4, str(out_dir / "percentile_cases_mvo.png"))
+
+    if args.reliability:
+        from src.analysis.probs import CascadeProbIndex, ProbIndex
+        entries = []
+        for run in runs:
+            if run.prob_dir is None or not run.prob_dir.exists():
+                continue
+            name = run_names.get(run.run_id, run.run_id)
+            if run.run_id.startswith("503") and "primus" not in run.run_id:
+                manifest = repo_path(
+                    "nnunet://nnUNet_raw/Dataset503_EMIDEC_Cascade/"
+                    "cascade_manifest.json")
+                if not manifest.exists():
+                    continue
+                index = CascadeProbIndex(
+                    str(run.prob_dir), str(manifest), str(gt_root),
+                    str(splits_path))
+            else:
+                index = ProbIndex(str(run.prob_dir), str(splits_path))
+            entries.append((name, index))
+        if entries:
+            ReliabilityPlot(gt_root, splits_path, entries).save(
+                str(out_dir / "reliability.png"))
+        else:
+            print("no probability directories found for reliability plot")
     if not args.no_bad_table:
         if args.images or args.from_images or not used_metrics:
             selected = [r for r in runs if r.pred_dir is not None]
@@ -104,8 +154,9 @@ def main(argv=None) -> int:
                      for r in selected]
             if not pairs:
                 raise SystemExit("--images requires prediction directories")
-            cv = CVData(gt_root, splits_path, pairs)
-            table = BadPerformersTable(cv, use_images=True)
+            if image_cv is None:
+                image_cv = CVData(gt_root, splits_path, pairs)
+            table = BadPerformersTable(image_cv, use_images=True)
         else:
             table = BadPerformersTable(None, use_images=False)
             table.load_results(tables)

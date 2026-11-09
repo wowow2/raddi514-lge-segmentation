@@ -31,6 +31,10 @@ def parse_args(argv=None):
     parser.add_argument("--pred-out-dir", default=artifact_default("polar_preds_erase", "predictions", "experiments://polar/outputs/polar_preds_erase/predictions"))
     parser.add_argument("--stage1-dir", default=DEFAULT_STAGE1_PRED_DIR)
     parser.add_argument("--out", default=artifact_default("polar_preds_erase", "metrics", "experiments://polar/outputs/polar_preds_erase/metrics.json"))
+    parser.add_argument("--prob-out-dir", default=artifact_default(
+        "polar_preds_erase", "probabilities",
+        "experiments://polar/outputs/polar_preds_erase/probabilities"))
+    parser.add_argument("--save-probabilities", action="store_true")
     parser.add_argument("--gt-root", default=DEFAULT_GT_ROOT)
     parser.add_argument("--splits", default=DEFAULT_SPLITS_PATH)
     parser.add_argument("--dilation", type=int, default=2)
@@ -89,11 +93,15 @@ def main(argv=None) -> int:
         model_dir=model_dir, pred_out_dir=pred_out, stage1_dir=stage1_dir,
         splits=splits, gt_root=gt_root, dilation=args.dilation,
         mode=args.mode, prob_thresh=args.tau, gate=gate, device=device,
+        prob_out_dir=args.prob_out_dir if args.save_probabilities else None,
         on_case=on_case)
 
     manifest = prediction_manifest(
         result, model_dir, pred_out, stage1_dir, splits, gt_root, gate=gate,
-        inference={"device": device, "mode": args.mode, "dilation": args.dilation, "tau": args.tau})
+        prob_out=result.get("prob_out"),
+        inference={"device": device, "mode": args.mode,
+                   "dilation": args.dilation, "tau": args.tau,
+                   "save_probabilities": args.save_probabilities})
     manifest.run_id = run_id
     manifest.description = args.description or manifest.description
     manifest.display_name = args.display_name or manifest.display_name

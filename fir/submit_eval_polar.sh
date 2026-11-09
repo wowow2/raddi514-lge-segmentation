@@ -79,6 +79,7 @@ cd "\$FIR_BASE"
 python "${REPO}/scripts/evaluate_polar.py" --device cpu \
   --model-dir "${DATA}/${MODEL_SUBDIR}" --stage1-dir "${DATA}/501_pp" \
   --pred-out-dir "${DATA}/polar_preds${TAG}" --out "${DATA}/polar_cv_metrics${TAG}.json" \
+  --prob-out-dir "${DATA}/polar_probs${TAG}" --save-probabilities \
   --gt-root "${DATA}/emidec_train" --splits "${DATA}/splits_final.json"
 EOF
 

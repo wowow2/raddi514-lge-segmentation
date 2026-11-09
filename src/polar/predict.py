@@ -22,6 +22,7 @@ from src.datautils.splits import CVSplits
 from src.layout import artifact_id
 from src.runs import RunManifest, read_manifest
 from .anchors import CaseAnchors
+from .merge import merge_polar_with_nnunet
 from .checkpoint import load_model, polar_resolution
 from .merge import PolarMerger
 
@@ -29,7 +30,7 @@ CaseCallback = Callable[[int, str, np.ndarray], None]
 
 
 def prediction_manifest(result, model_dir, pred_out, stage1_dir, splits, gt_root,
-                        *, inference, gate=None):
+                        *, inference, gate=None, prob_out=None):
     """Shared output identity and lineage for prediction and evaluation CLIs."""
     model_dir, pred_out = Path(model_dir), Path(pred_out)
     parent = RunManifest.from_dict(read_manifest(model_dir / "run.json"))
@@ -51,7 +52,10 @@ def prediction_manifest(result, model_dir, pred_out, stage1_dir, splits, gt_root
         postprocess=({"ops": gate.ops(), "min_scar_voxels": gate.min_scar_voxels,
                       "min_mvo_voxels": gate.min_mvo_voxels, "scar_grow_px": gate.scar_grow_px}
                      if gate is not None else {"ops": []}),
-        paths={"predictions": str(pred_out.resolve()), "checkpoints": str(model_dir.resolve())},
+        paths={"predictions": str(pred_out.resolve()),
+               "checkpoints": str(model_dir.resolve()),
+               **({"probabilities": str(Path(prob_out).resolve())}
+                  if prob_out is not None else {})},
         status={"expected_outputs": "oof", "prediction": result["prediction"]},
     )
 
@@ -68,11 +72,13 @@ def predict_oof(
     prob_thresh: float | None = None,
     gate: PostProcessor | None = None,
     device: str = "cpu",
+    prob_out_dir: str | Path | None = None,
     on_case: CaseCallback | None = None,
 ) -> dict:
     """Run every fold's best checkpoint on that fold's validation cases."""
     model_dir = Path(repo_path(model_dir))
     pred_out = Path(repo_path(pred_out_dir))
+    prob_out = Path(repo_path(prob_out_dir)) if prob_out_dir is not None else None
     stage1_dir = repo_path(stage1_dir)
     gt_root = repo_path(gt_root)
     dataset = EMIDECDataset(gt_root)
@@ -100,13 +106,33 @@ def predict_oof(
 
         fold_val_dir = pred_out / f"fold_{fold}" / "validation"
         fold_val_dir.mkdir(parents=True, exist_ok=True)
+        fold_prob_dir = None
+        if prob_out is not None:
+            fold_prob_dir = prob_out / f"fold_{fold}" / "validation"
+            fold_prob_dir.mkdir(parents=True, exist_ok=True)
         for nnunet_id in split["val"]:
             cid = nnunet_id_to_case_id(nnunet_id)
             case = dataset.get(cid)
             raw_img, _ = case.load()
             anchors = CaseAnchors(stage1.path(cid))
-            merged = merger(raw_vol=raw_img, nnunet_pred=anchors.pred_vol,
-                            case_anchors=anchors, apply_gate=gate is not None)
+            if prob_out is not None:
+                cart, covered = merger.cartesian_probs(
+                    raw_img, anchors.pred_vol, anchors)
+                merged = merge_polar_with_nnunet(
+                    anchors.pred_vol, cart, covered, merger.dilation,
+                    mode=merger.mode, prob_thresh=merger.prob_thresh)
+                if gate is not None:
+                    merged = gate(merged)
+            else:
+                merged = merger(raw_vol=raw_img, nnunet_pred=anchors.pred_vol,
+                                case_anchors=anchors,
+                                apply_gate=gate is not None)
+
+            if fold_prob_dir is not None:
+                np.savez_compressed(
+                    fold_prob_dir / f"{nnunet_id}.npz",
+                    probabilities=np.ascontiguousarray(
+                        cart.transpose(0, 3, 2, 1).astype(np.float16)))
 
             nii_ref = nib.load(str(anchors.pred_path))
             nib.save(
@@ -121,5 +147,6 @@ def predict_oof(
         "R": polar_resolution(config)[0],
         "Theta": polar_resolution(config)[1],
         "n_written": written,
+        "prob_out": str(prob_out) if prob_out is not None else None,
         "prediction": CVPredictionIndex(pred_out, splits).summary(),
     }

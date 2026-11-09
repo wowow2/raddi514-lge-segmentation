@@ -100,13 +100,17 @@ class PolarMerger:
         probs = self.model(x)[0].float().softmax(1).cpu()            # (N,5,R,Θ)
         return {z: probs[i] for i, z in enumerate(zs)}
 
-    def __call__(self, raw_vol, nnunet_pred, case_anchors, apply_gate: bool = True):
+    def cartesian_probs(self, raw_vol, nnunet_pred, case_anchors):
+        """(5, X, Y, Z) Cartesian probabilities and the covered-slice mask."""
         H, W, Z = raw_vol.shape
         transform = PolarTransform(case_anchors.anchors, self.R, self.Theta)
         pp = self.polar_probs(raw_vol, case_anchors, transform)
         covered = np.zeros(Z, bool)
         covered[list(pp)] = True
-        cart = polar_probs_to_cartesian(pp, transform, H, W, Z)
+        return polar_probs_to_cartesian(pp, transform, H, W, Z), covered
+
+    def __call__(self, raw_vol, nnunet_pred, case_anchors, apply_gate: bool = True):
+        cart, covered = self.cartesian_probs(raw_vol, nnunet_pred, case_anchors)
         merged = merge_polar_with_nnunet(
             nnunet_pred, cart, covered, self.dilation,
             mode=self.mode, prob_thresh=self.prob_thresh)

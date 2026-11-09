@@ -144,6 +144,11 @@ def write_output(repo, manifest):
         return path.parent / "training.json"
     if name not in experiment["outputs"]:
         experiment["outputs"].append(name)
+        # Training-only metadata is written before any scored output exists and
+        # leaves default_output unset; adopt the first scored output so the
+        # catalog stays valid when predictions/metrics arrive later.
+        if not experiment.get("default_output"):
+            experiment["default_output"] = name
     write_json(path.parent / "outputs" / name / "output.json", output)
     write_json(path, experiment)
     return path.parent / "outputs" / name / "output.json"

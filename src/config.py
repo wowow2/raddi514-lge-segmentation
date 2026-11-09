@@ -66,6 +66,20 @@ DEFAULT_OUT_PATH: str = _env_path("NNUNET_CV_OUT", artifact_default(
     "experiments://nnUNet_validation/outputs/nnUNet_validation/metrics.json"))
 DEFAULT_STAGE1_PRED_DIR: str = artifact_default("nnUNet_validation_501_pp", "predictions",
     "experiments://nnUNet_validation_501/outputs/nnUNet_validation_501_pp/predictions")
+# ScarNet mirrors the 503 ROI cascade: the prior is the 500over 2D run, not 501.
+DEFAULT_SCARNET_PRED_DIR: str = artifact_default(
+    "nnUNet_validation_500over", "predictions",
+    "experiments://nnUNet_validation_500over/outputs/nnUNet_validation_500over/predictions")
+DEFAULT_SCARNET_MODEL_DIR: str = str(repo_path("experiments://scarnet/checkpoints"))
+DEFAULT_SCARNET_OOF_PRED_DIR: str = artifact_default(
+    "scarnet_oof", "predictions",
+    "experiments://scarnet/outputs/scarnet_oof/predictions")
+DEFAULT_SCARNET_OOF_METRICS: str = artifact_default(
+    "scarnet_oof", "metrics",
+    "experiments://scarnet/outputs/scarnet_oof/metrics.json")
+DEFAULT_SCARNET_OOF_PROB_DIR: str = artifact_default(
+    "scarnet_oof", "probabilities",
+    "experiments://scarnet/outputs/scarnet_oof/probabilities")
 DEFAULT_POLAR_MODEL_DIR: str = str(repo_path("experiments://polar/checkpoints"))
 DEFAULT_TEST_ROOT: str = str(repo_path("data://source/emidec/test"))
 DEFAULT_NNUNET_RAW: str = str(repo_path("nnunet://nnUNet_raw"))
