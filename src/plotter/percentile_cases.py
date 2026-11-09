@@ -73,6 +73,16 @@ class PercentileCaseGallery:
         return (slice(r_start, min(h, r_start + side)),
                 slice(c_start, min(w, c_start + side)))
 
+    @staticmethod
+    def _pad_square(arrs):
+        h, w = arrs[0].shape
+        side = max(h, w)
+        out = []
+        for a in arrs:
+            pt, pl = (side - h) // 2, (side - w) // 2
+            out.append(np.pad(a, ((pt, side - h - pt), (pl, side - w - pl))))
+        return out
+
     def save(self, label: int, path: str):
         if not getattr(self, "_records", None):
             self._collect()
@@ -86,7 +96,7 @@ class PercentileCaseGallery:
         })
         nrows, ncols = len(self.percentiles), len(names)
         fig, axes = plt.subplots(nrows, ncols,
-                                 figsize=(2.4 * ncols, 2.5 * nrows),
+                                 figsize=(2.5 * ncols, 2.5 * nrows),
                                  squeeze=False)
         for row, pct in enumerate(self.percentiles):
             picked = self._pick(label, pct)
@@ -103,20 +113,22 @@ class PercentileCaseGallery:
             box = self._crop_box(
                 base, [gt_sl == label] + [preds[n][:, :, z].T == label
                                           for n in names if preds[n] is not None])
+            sl, gt_c = self._pad_square(
+                [base[box] if box else base, gt_sl[box] == label])
             for col, name in enumerate(names):
                 ax = axes[row, col]
                 ax.set_xticks([])
                 ax.set_yticks([])
-                sl = base[box] if box else base
                 ax.imshow(sl, cmap="gray", origin="lower", vmin=0, vmax=1,
                           interpolation="nearest")
-                ax.contour(gt_sl[box] == label, levels=[0.5],
+                ax.contour(gt_c, levels=[0.5],
                            colors=["#d62728"], linewidths=1.0)
                 dice = dices.get(name)
                 if preds[name] is not None:
-                    pred_sl = preds[name][:, :, z].T[box]
-                    if (pred_sl == label).any():
-                        ax.contour(pred_sl == label, levels=[0.5],
+                    _, pred_c = self._pad_square(
+                        [np.zeros_like(sl), preds[name][:, :, z].T[box] == label])
+                    if pred_c.any():
+                        ax.contour(pred_c, levels=[0.5],
                                    colors=["#2ca02c"], linewidths=1.0)
                 ax.text(0.03, 0.97,
                         f"{case.case_id.replace('Case_', '')}: "
