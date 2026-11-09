@@ -16,8 +16,8 @@ from .cv_data import CVData
 
 
 class PercentileCaseGallery:
-    """Rows are percentile levels of the mean Dice across methods; each row
-    shows the same case for every method so anatomies line up."""
+    """Each column ranks its own cases by Dice and shows that method's case
+    at each percentile level, so every column is monotonic top to bottom."""
 
     def __init__(self, cv_data: CVData, labels: tuple[int, ...] = (3, 4),
                  percentiles: tuple[int, ...] = (100, 75, 50, 25)):
@@ -47,11 +47,11 @@ class PercentileCaseGallery:
         ax.imshow(mask, cmap=cmap, origin="lower", vmin=0, vmax=1,
                   interpolation="nearest")
 
-    def _pick(self, label: int, pct: int):
-        items = list(self._records[label].values())
+    def _pick(self, label: int, pct: int, name: str):
+        items = [item for item in self._records[label].values() if name in item[3]]
         if not items:
             return None
-        items.sort(key=lambda item: float(np.mean(list(item[3].values()))))
+        items.sort(key=lambda item: item[3][name])
         index = int(round(pct / 100 * (len(items) - 1)))
         return items[index]
 
@@ -110,35 +110,34 @@ class PercentileCaseGallery:
                                  figsize=(2.5 * ncols, 2.5 * nrows),
                                  squeeze=False)
         for row, pct in enumerate(self.percentiles):
-            picked = self._pick(label, pct)
-            if picked is None:
-                for col in range(ncols):
-                    axes[row, col].axis("off")
-                continue
-            case, fi, nid, dices = picked
-            _, gt = case.load()
-            z = self._slice(gt, label)
-            gt_sl = gt[:, :, z].T
-            base = np.asarray(case.display_image[:, :, z]).T
-            preds = {name: self.cv.pred_array(name, fi, nid) for name in names}
-            box = self._crop_box(
-                base, [gt_sl == label] + [preds[n][:, :, z].T == label
-                                          for n in names if preds[n] is not None])
-            sl, gt_c = self._pad_square(
-                [base[box] if box else base, gt_sl[box] == label])
             for col, name in enumerate(names):
                 ax = axes[row, col]
                 ax.set_xticks([])
                 ax.set_yticks([])
+                picked = self._pick(label, pct, name)
+                if picked is None:
+                    ax.axis("off")
+                    continue
+                case, fi, nid, dices = picked
+                _, gt = case.load()
+                z = self._slice(gt, label)
+                gt_sl = gt[:, :, z].T
+                base = np.asarray(case.display_image[:, :, z]).T
+                pred = self.cv.pred_array(name, fi, nid)
+                box = self._crop_box(
+                    base, [gt_sl == label]
+                    + ([pred[:, :, z].T == label] if pred is not None else []))
+                sl, gt_c = self._pad_square(
+                    [base[box] if box else base, gt_sl[box] == label])
                 ax.imshow(sl, cmap="gray", origin="lower", vmin=0, vmax=1,
                           interpolation="nearest")
                 self._fill(ax, gt_c, "#d62728")
                 ax.contour(gt_c, levels=[0.5],
                            colors=["#d62728"], linewidths=0.7)
                 dice = dices.get(name)
-                if preds[name] is not None:
+                if pred is not None:
                     _, pred_c = self._pad_square(
-                        [np.zeros_like(sl), preds[name][:, :, z].T[box] == label])
+                        [np.zeros_like(sl), pred[:, :, z].T[box] == label])
                     if pred_c.any():
                         self._fill(ax, pred_c, "#2ca02c")
                         ax.contour(pred_c, levels=[0.5],
@@ -160,7 +159,7 @@ class PercentileCaseGallery:
         ]
         fig.legend(handles=handles, loc="lower center", ncol=2,
                    frameon=False, fontsize=8)
-        fig.suptitle(f"{LABEL_NAMES[label]} cases by mean Dice percentile",
+        fig.suptitle(f"{LABEL_NAMES[label]} cases by per-method Dice percentile",
                      fontsize=12)
         fig.tight_layout(rect=(0, 0.015, 1, 0.92), w_pad=0.02, h_pad=0.08)
         top = max(axes[0, col].get_position().y1 for col in range(ncols))
