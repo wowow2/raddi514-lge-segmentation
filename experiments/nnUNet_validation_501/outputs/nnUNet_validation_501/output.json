@@ -37,7 +37,8 @@
   "paths": {
     "predictions": "experiments://nnUNet_validation_501/outputs/nnUNet_validation_501/predictions",
     "metrics": "experiments://nnUNet_validation_501/outputs/nnUNet_validation_501/metrics.json",
-    "checkpoints": "nnunet://nnUNet_results/Dataset501_EMIDEC_Regions/nnUNetTrainer__nnUNetResEncUNetMPlans__2d"
+    "checkpoints": "nnunet://nnUNet_results/Dataset501_EMIDEC_Regions/nnUNetTrainer__nnUNetResEncUNetMPlans__2d",
+    "probabilities": "nnunet://nnUNet_results/Dataset501_EMIDEC_Regions/probs_nnUNetResEncUNetMPlans_2d"
   },
   "status": {
     "expected_outputs": "oof",

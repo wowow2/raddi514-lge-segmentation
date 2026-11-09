@@ -22,12 +22,31 @@ from src.datautils.splits import CVSplits
 NPZ_TO_XYZ = (0, 3, 2, 1)  # (C, Z, Y, X) -> (C, X, Y, Z)
 
 
+def regions_to_flat(probs: np.ndarray) -> np.ndarray:
+    """nnU-Net region probabilities -> flat EMIDEC class probabilities.
+
+    Region-only output has four channels (whole heart, myocardium, infarction,
+    MVO); background is implicit. Some exports include a background channel.
+    """
+    if probs.shape[0] == 4:
+        whole, myo, inf, mvo = probs
+        bg = np.clip(1.0 - whole, 0.0, 1.0)
+    elif probs.shape[0] == 5:
+        bg, whole, myo, inf, mvo = probs
+    else:
+        raise ValueError(f"expected 4 or 5 region channels, got {probs.shape[0]}")
+    flat = np.stack([bg, whole - myo, myo - inf, inf - mvo, mvo], axis=0)
+    return np.clip(flat, 0.0, 1.0).astype(np.float32)
+
+
 class ProbIndex:
     """case_id -> out-of-fold .npz path (<prob_dir>/fold_k/validation/<nid>.npz)."""
 
-    def __init__(self, prob_dir: str, splits_path: str = DEFAULT_SPLITS_PATH):
+    def __init__(self, prob_dir: str, splits_path: str = DEFAULT_SPLITS_PATH,
+                 scheme: str = "flat"):
         prob_dir = str(repo_path(prob_dir))
         splits_path = str(repo_path(splits_path))
+        self.scheme = scheme
         self.index = CVPredictionIndex(
             prob_dir, CVSplits.load(splits_path), suffix=".npz")
         self.paths: dict[str, Path] = {
@@ -40,7 +59,8 @@ class ProbIndex:
     def load(self, case_id: str) -> np.ndarray:
         """Return (C, X, Y, Z) float32 probabilities aligned with the GT."""
         p = np.load(self.paths[case_id])["probabilities"]
-        return np.ascontiguousarray(p.transpose(*NPZ_TO_XYZ), dtype=np.float32)
+        out = np.ascontiguousarray(p.transpose(*NPZ_TO_XYZ), dtype=np.float32)
+        return regions_to_flat(out) if self.scheme == "regions" else out
 
     def verify(self, case_id: str, prob: np.ndarray) -> float:
         """Fraction of voxels where argmax(prob) equals the exported .nii.gz label."""
