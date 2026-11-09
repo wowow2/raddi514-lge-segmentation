@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import ListedColormap, to_rgb
 
 from src.config import LABEL_NAMES
 from .cv_data import CVData
@@ -39,6 +40,13 @@ class PercentileCaseGallery:
                 records[lbl][case.case_id] = (case, fi, nid, dices)
         self._records = records
 
+    @staticmethod
+    def _fill(ax, mask, color: str) -> None:
+        rgba = (*to_rgb(color), 0.40)
+        cmap = ListedColormap([(0.0, 0.0, 0.0, 0.0), rgba])
+        ax.imshow(mask, cmap=cmap, origin="lower", vmin=0, vmax=1,
+                  interpolation="nearest")
+
     def _pick(self, label: int, pct: int):
         items = list(self._records[label].values())
         if not items:
@@ -53,10 +61,12 @@ class PercentileCaseGallery:
         return int(np.argmax(counts)) if counts.size else 0
 
     @staticmethod
-    def _crop_box(sl, label_masks, margin=12):
-        content = sl > 0.05
+    def _crop_box(sl, label_masks, margin=20, min_side=80):
+        content = np.zeros(sl.shape, dtype=bool)
         for mask in label_masks:
             content |= mask
+        if not content.any():
+            content = sl > 0.05
         rows = np.any(content, axis=1)
         cols = np.any(content, axis=0)
         if not rows.any():
@@ -64,6 +74,7 @@ class PercentileCaseGallery:
         r0, r1 = np.where(rows)[0][[0, -1]]
         c0, c1 = np.where(cols)[0][[0, -1]]
         side = max(r1 - r0, c1 - c0) + 2 * margin
+        side = max(side, min_side)
         rc = (r0 + r1) // 2
         cc = (c0 + c1) // 2
         h, w = sl.shape
@@ -121,15 +132,17 @@ class PercentileCaseGallery:
                 ax.set_yticks([])
                 ax.imshow(sl, cmap="gray", origin="lower", vmin=0, vmax=1,
                           interpolation="nearest")
+                self._fill(ax, gt_c, "#d62728")
                 ax.contour(gt_c, levels=[0.5],
-                           colors=["#d62728"], linewidths=1.0)
+                           colors=["#d62728"], linewidths=0.7)
                 dice = dices.get(name)
                 if preds[name] is not None:
                     _, pred_c = self._pad_square(
                         [np.zeros_like(sl), preds[name][:, :, z].T[box] == label])
                     if pred_c.any():
+                        self._fill(ax, pred_c, "#2ca02c")
                         ax.contour(pred_c, levels=[0.5],
-                                   colors=["#2ca02c"], linewidths=1.0)
+                                   colors=["#2ca02c"], linewidths=0.7)
                 ax.text(0.03, 0.97,
                         f"{case.case_id.replace('Case_', '')}: "
                         + (f"{dice:.2f}" if dice is not None else "n/a"),
@@ -140,8 +153,10 @@ class PercentileCaseGallery:
                 if col == 0:
                     ax.set_ylabel(f"{pct}th", fontsize=9)
         handles = [
-            plt.Line2D([], [], color="#d62728", lw=1.2, label="Ground truth"),
-            plt.Line2D([], [], color="#2ca02c", lw=1.2, label="Prediction"),
+            plt.Rectangle((0, 0), 1, 1, facecolor="#d62728", alpha=0.40,
+                          edgecolor="#d62728", label="Ground truth"),
+            plt.Rectangle((0, 0), 1, 1, facecolor="#2ca02c", alpha=0.40,
+                          edgecolor="#2ca02c", label="Prediction"),
         ]
         fig.legend(handles=handles, loc="lower center", ncol=2,
                    frameon=False, fontsize=8)
