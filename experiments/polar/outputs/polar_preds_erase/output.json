@@ -48,7 +48,8 @@
   "paths": {
     "predictions": "experiments://polar/outputs/polar_preds_erase/predictions",
     "metrics": "experiments://polar/outputs/polar_preds_erase/metrics.json",
-    "checkpoints": "experiments://polar/checkpoints"
+    "checkpoints": "experiments://polar/checkpoints",
+    "probabilities": "experiments://polar/outputs/polar_preds_erase/probabilities"
   },
   "status": {
     "expected_outputs": "oof",
