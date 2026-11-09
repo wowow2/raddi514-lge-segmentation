@@ -26,8 +26,6 @@ class PercentileWindowPlot:
 
     def _values(self, name: str, label: int) -> list[float]:
         table = self.tables[name].filter(class_id=label)
-        if label in (3, 4):
-            table = table.filter(gt_present=True)
         defined = f"{self.metric}_defined"
         return [float(r[self.metric]) for r in table.rows
                 if r.get(defined) and r.get(self.metric) is not None]
@@ -60,10 +58,7 @@ class PercentileWindowPlot:
                         color=color, fontsize=7, va="center",
                         bbox=dict(facecolor="white", alpha=0.75,
                                   edgecolor="none", pad=0.8))
-            title = LABEL_NAMES[label]
-            if label in (3, 4):
-                title += " (GT-present)"
-            ax.set_title(title)
+            ax.set_title(LABEL_NAMES[label])
             ax.set_yticks(range(len(names)))
             ax.set_yticklabels(names, fontsize=7)
             ax.invert_yaxis()

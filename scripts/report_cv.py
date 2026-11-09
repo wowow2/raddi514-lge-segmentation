@@ -49,6 +49,26 @@ def _common_cases(tables: dict[str, ResultsTable], mode: str) -> set[str]:
             else set.union(*sets))
 
 
+DEFAULT_RUNS = {
+    "nnUNet_validation": "Plain",
+    "nnUNet_validation_500over": "ResEnc",
+    "cascade_503_primus": "Cascade (Primus)",
+    "cascade_503_resenc": "Cascade (ResEnc)",
+    "polar": "Polar",
+}
+
+
+def _default_runs(store: RunStore) -> list:
+    runs = []
+    for run_id in DEFAULT_RUNS:
+        try:
+            runs.append(store.get(run_id))
+        except KeyError:
+            print(f"warning: default run {run_id} not found; skipped",
+                  file=sys.stderr)
+    return runs
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     if args.html:
@@ -65,7 +85,9 @@ def main(argv=None) -> int:
     splits_path = repo_path(args.splits)
     gt_root = repo_path(args.gt_root)
     store = RunStore(splits_path=splits_path)
-    runs = store.select(args.runs) if args.runs else store.discover()
+    runs = store.select(args.runs) if args.runs else _default_runs(store)
+    display_names = {run.run_id: DEFAULT_RUNS.get(run.run_id, run.name)
+                     for run in runs}
     out_dir = Path(repo_path(args.out_dir))
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -79,7 +101,7 @@ def main(argv=None) -> int:
             else:
                 print(f"warning: {run.run_id} has no metrics; skipped",
                       file=sys.stderr)
-    run_names = {run.run_id: run.name for run in runs}
+    run_names = display_names
 
     if tables:
         used_metrics = True

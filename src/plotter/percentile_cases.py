@@ -95,17 +95,6 @@ class PercentileCaseGallery:
                              fontsize=6.5, pad=1.5)
                 if col == 0:
                     ax.set_ylabel(f"{pct}th", fontsize=8)
-                if row == 0:
-                    underscores = [i for i, ch in enumerate(name) if ch == "_"]
-                    if underscores:
-                        cut = min(underscores,
-                                  key=lambda i: abs(i - len(name) / 2))
-                        wrapped = name[:cut + 1] + "\n" + name[cut + 1:]
-                    else:
-                        wrapped = name
-                    ax.text(0.5, 1.52, wrapped, transform=ax.transAxes,
-                            ha="center", va="top", fontsize=7,
-                            linespacing=1.0)
         handles = [
             plt.Line2D([], [], color="#d62728", lw=1.2, label="Ground truth"),
             plt.Line2D([], [], color="#2ca02c", lw=1.2, label="Prediction"),
@@ -115,6 +104,17 @@ class PercentileCaseGallery:
         fig.suptitle(f"{LABEL_NAMES[label]} cases by Dice percentile",
                      fontsize=12)
         fig.tight_layout(rect=(0, 0.03, 1, 0.88))
+        top = max(axes[0, col].get_position().y1 for col in range(ncols))
+        for col, name in enumerate(names):
+            underscores = [i for i, ch in enumerate(name) if ch == "_"]
+            if underscores:
+                cut = min(underscores, key=lambda i: abs(i - len(name) / 2))
+                wrapped = name[:cut + 1] + "\n" + name[cut + 1:]
+            else:
+                wrapped = name
+            pos = axes[0, col].get_position()
+            fig.text((pos.x0 + pos.x1) / 2, top + 0.03, wrapped,
+                     ha="center", va="bottom", fontsize=7, linespacing=1.0)
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         fig.savefig(path, dpi=200, bbox_inches="tight")
         print(f"saved -> {path}")

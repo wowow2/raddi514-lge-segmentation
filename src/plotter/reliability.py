@@ -24,8 +24,6 @@ class ReliabilityPlot:
 
     def _values(self, name: str, label: int) -> list[float]:
         table = self.tables[name].filter(class_id=label)
-        if label in (3, 4):
-            table = table.filter(gt_present=True)
         values = [float(r["dice"]) for r in table.rows
                   if r.get("dice_defined") and r.get("dice") is not None]
         return values
@@ -46,10 +44,7 @@ class ReliabilityPlot:
                 reliability = np.array([(values > d).mean() for d in grid])
                 ax.plot(grid, reliability, color=colors[i], lw=1.4,
                         label=name)
-            title = LABEL_NAMES[label]
-            if label in (3, 4):
-                title += " (GT-present)"
-            ax.set_title(title)
+            ax.set_title(LABEL_NAMES[label])
             ax.set_xlim(0, 1)
             ax.set_ylim(0, 1.02)
             ax.grid(alpha=0.25, linewidth=0.6)
