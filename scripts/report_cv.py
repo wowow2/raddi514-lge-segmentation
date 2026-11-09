@@ -140,7 +140,9 @@ def main(argv=None) -> int:
                     str(run.prob_dir), str(manifest), str(gt_root),
                     str(splits_path))
             else:
-                index = ProbIndex(str(run.prob_dir), str(splits_path))
+                scheme = run.manifest.get("data.label_scheme") or "flat"
+                index = ProbIndex(
+                    str(run.prob_dir), str(splits_path), scheme=scheme)
             entries.append((name, index))
         if entries:
             ReliabilityPlot(gt_root, splits_path, entries).save(
