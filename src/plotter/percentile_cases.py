@@ -26,18 +26,27 @@ class PercentileCaseGallery:
         self.percentiles = percentiles
 
     def _collect(self):
-        # per label: {case_id: (case, fi, nid, {run_name: dice})}
+        # per label: {case_id: (case, fi, nid, z, {run_name: slice_dice})}
         records: dict[int, dict[str, tuple]] = {lbl: {} for lbl in self.labels}
         for fi, nid, case in self.cv.iter_val():
             gt = self.cv.gt_array(case)
-            per_run = {name: self.cv.case_dice(self.cv.pred_array(name, fi, nid), gt)
-                       for name in self.cv.run_names
-                       if self.cv.pred_array(name, fi, nid) is not None}
+            preds = {name: self.cv.pred_array(name, fi, nid)
+                     for name in self.cv.run_names}
             for lbl in self.labels:
-                if int((gt == lbl).sum()) == 0:
+                counts = (gt == lbl).sum(axis=(0, 1))
+                if not counts.size or counts.max() == 0:
                     continue
-                dices = {name: float(d[lbl]) for name, d in per_run.items()}
-                records[lbl][case.case_id] = (case, fi, nid, dices)
+                z = int(np.argmax(counts))
+                gt_sl = gt[:, :, z].T == lbl
+                sdice = {}
+                for name, pred in preds.items():
+                    if pred is None:
+                        continue
+                    p_sl = pred[:, :, z].T == lbl
+                    tot = gt_sl.sum() + p_sl.sum()
+                    sdice[name] = 1.0 if tot == 0 else float(
+                        2.0 * (gt_sl & p_sl).sum() / tot)
+                records[lbl][case.case_id] = (case, fi, nid, z, sdice)
         self._records = records
 
     @staticmethod
@@ -48,17 +57,12 @@ class PercentileCaseGallery:
                   interpolation="nearest")
 
     def _pick(self, label: int, pct: int, name: str):
-        items = [item for item in self._records[label].values() if name in item[3]]
+        items = [item for item in self._records[label].values() if name in item[4]]
         if not items:
             return None
-        items.sort(key=lambda item: item[3][name])
+        items.sort(key=lambda item: item[4][name])
         index = int(round(pct / 100 * (len(items) - 1)))
         return items[index]
-
-    @staticmethod
-    def _slice(gt, label):
-        counts = (gt == label).sum(axis=(0, 1))
-        return int(np.argmax(counts)) if counts.size else 0
 
     @staticmethod
     def _crop_box(sl, label_masks, margin=20, min_side=80):
@@ -118,9 +122,8 @@ class PercentileCaseGallery:
                 if picked is None:
                     ax.axis("off")
                     continue
-                case, fi, nid, dices = picked
-                _, gt = case.load()
-                z = self._slice(gt, label)
+                case, fi, nid, z, sdice = picked
+                gt = self.cv.gt_array(case)
                 gt_sl = gt[:, :, z].T
                 base = np.asarray(case.display_image[:, :, z]).T
                 pred = self.cv.pred_array(name, fi, nid)
@@ -134,7 +137,7 @@ class PercentileCaseGallery:
                 self._fill(ax, gt_c, "#d62728")
                 ax.contour(gt_c, levels=[0.5],
                            colors=["#d62728"], linewidths=0.7)
-                dice = dices.get(name)
+                dice = sdice.get(name)
                 if pred is not None:
                     _, pred_c = self._pad_square(
                         [np.zeros_like(sl), pred[:, :, z].T[box] == label])
@@ -159,8 +162,8 @@ class PercentileCaseGallery:
         ]
         fig.legend(handles=handles, loc="lower center", ncol=2,
                    frameon=False, fontsize=8)
-        fig.suptitle(f"{LABEL_NAMES[label]} cases by per-method Dice percentile",
-                     fontsize=12)
+        fig.suptitle(f"{LABEL_NAMES[label]} slices by per-method slice Dice "
+                     "percentile", fontsize=12)
         fig.tight_layout(rect=(0, 0.015, 1, 0.92), w_pad=0.02, h_pad=0.08)
         top = max(axes[0, col].get_position().y1 for col in range(ncols))
         for col, name in enumerate(names):
