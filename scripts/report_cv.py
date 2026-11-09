@@ -79,7 +79,7 @@ def main(argv=None) -> int:
         return 0
     from src.plotter import (
         BadPerformersTable, CVData, DiceDistributionPlot,
-        CalibrationPlot, PercentileCaseGallery, PercentileWindowPlot,
+        CalibrationPlot, PercentileCaseGallery,
         ReliabilityPlot, SummaryBarsPlot,
     )
     splits_path = repo_path(args.splits)
@@ -129,8 +129,6 @@ def main(argv=None) -> int:
     plot.save(str(out_dir / "dice_distributions.png"))
     plot.save_by_run(str(out_dir), prefix="dice")
     if used_metrics:
-        PercentileWindowPlot(display).save(
-            str(out_dir / "percentile_windows.png"))
         SummaryBarsPlot(display).save(str(out_dir / "metric_bars.png"))
 
     image_cv = None
