@@ -34,7 +34,9 @@ def parse_args(argv=None):
     parser.add_argument("--case-gallery", action="store_true",
                         help="render image/contour percentile galleries")
     parser.add_argument("--reliability", action="store_true",
-                        help="render probability reliability curves")
+                        help="render Dice reliability curves R(d)=P(Dice>d)")
+    parser.add_argument("--calibration", action="store_true",
+                        help="render probability calibration curves")
     parser.add_argument("--no-bad-table", action="store_true")
     return parser.parse_args(argv)
 
@@ -57,8 +59,8 @@ def main(argv=None) -> int:
         return 0
     from src.plotter import (
         BadPerformersTable, CVData, DiceDistributionPlot,
-        PercentileCaseGallery, PercentileWindowPlot, ReliabilityPlot,
-        SummaryBarsPlot,
+        CalibrationPlot, PercentileCaseGallery, PercentileWindowPlot,
+        ReliabilityPlot, SummaryBarsPlot,
     )
     splits_path = repo_path(args.splits)
     gt_root = repo_path(args.gt_root)
@@ -123,7 +125,10 @@ def main(argv=None) -> int:
         gallery.save(3, str(out_dir / "percentile_cases_scar.png"))
         gallery.save(4, str(out_dir / "percentile_cases_mvo.png"))
 
-    if args.reliability:
+    if args.reliability and used_metrics:
+        ReliabilityPlot(display).save(str(out_dir / "reliability.png"))
+
+    if args.calibration:
         from src.analysis.probs import CascadeProbIndex, ProbIndex
         entries = []
         for run in runs:
@@ -145,10 +150,10 @@ def main(argv=None) -> int:
                     str(run.prob_dir), str(splits_path), scheme=scheme)
             entries.append((name, index))
         if entries:
-            ReliabilityPlot(gt_root, splits_path, entries).save(
-                str(out_dir / "reliability.png"))
+            CalibrationPlot(gt_root, splits_path, entries).save(
+                str(out_dir / "calibration.png"))
         else:
-            print("no probability directories found for reliability plot")
+            print("no probability directories found for calibration plot")
     if not args.no_bad_table:
         if args.images or args.from_images or not used_metrics:
             selected = [r for r in runs if r.pred_dir is not None]

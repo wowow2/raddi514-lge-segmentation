@@ -25,6 +25,7 @@ class SummaryBarsPlot:
         return table.overall(metric)
 
     def save(self, path: str):
+        plt.rcParams.update({"font.family": "serif", "font.size": 9})
         names = list(self.tables)
         colors = plt.cm.tab10(np.linspace(0, 1, max(len(names), 1)))
         fig, axes = plt.subplots(1, 2, figsize=(15, 5.5))
@@ -47,18 +48,10 @@ class SummaryBarsPlot:
             ax.grid(axis="y", alpha=0.2)
             if metric == "dice":
                 ax.set_ylim(0, 1.05)
-        fig.patch.set_facecolor("#1e1e1e")
-        for ax in axes:
-            ax.set_facecolor("#252525")
-            ax.tick_params(colors="white")
-            ax.yaxis.label.set_color("white")
-            for spine in ax.spines.values():
-                spine.set_color("#555555")
-        axes[0].legend(facecolor="#2e2e2e", edgecolor="#555555",
-                       labelcolor="white", fontsize=8)
-        fig.suptitle("Per-class mean metrics", color="white", fontweight="bold")
+        axes[0].legend(frameon=False, fontsize=7, ncol=2)
+        fig.suptitle("Per-class mean metrics")
         fig.tight_layout()
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        fig.savefig(path, facecolor=fig.get_facecolor(), dpi=150)
+        fig.savefig(path, dpi=200, bbox_inches="tight")
         print(f"saved -> {path}")
         plt.close(fig)
